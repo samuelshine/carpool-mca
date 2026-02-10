@@ -18,8 +18,8 @@ class RideBase(BaseModel):
     estimated_fare: Optional[float] = None
 
 class RideCreate(RideBase):
-    driver_id: UUID
     vehicle_id: UUID
+    # driver_id inferred from auth token
 
 class RideRead(RideBase):
     ride_id: UUID

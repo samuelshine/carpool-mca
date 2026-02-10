@@ -58,9 +58,10 @@ class Settings(BaseSettings):
         return bool(re.match(self.COLLEGE_EMAIL_PATTERN, email.lower()))
     
     class Config:
-        env_file = ".env"
+        env_file = (".env", "../.env")
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
 
 
 @lru_cache

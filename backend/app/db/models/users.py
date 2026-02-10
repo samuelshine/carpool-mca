@@ -43,8 +43,7 @@ class User(Base):
     # Relationships
     driven_rides = relationship(
         "Ride",
-        back_populates="driver",
-        foreign_keys="Ride.driver_id"
+        back_populates="driver"
     )
 
     vehicles = relationship(

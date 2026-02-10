@@ -8,9 +8,12 @@ class VehicleBase(BaseModel):
     vehicle_number: str
 
 class VehicleCreate(VehicleBase):
-    user_id: UUID
+    pass  # user_id inferred from auth token
 
 class VehicleRead(VehicleBase):
     vehicle_id: UUID
     user_id: UUID
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
