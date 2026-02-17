@@ -1,13 +1,31 @@
-from pydantic import BaseModel, Field
+"""
+Pydantic schemas for driver profiles.
+"""
+from typing import Optional
 from uuid import UUID
+from pydantic import BaseModel, Field
 
-class DriverProfileBase(BaseModel):
+
+class DriverProfileCreate(BaseModel):
+    """Create or upsert a driver profile."""
     vehicle_id: UUID
-    daily_seat_limit: int = Field(..., gt=0)
+    daily_seat_limit: int = Field(..., ge=1, le=10)
 
-class DriverProfileCreate(DriverProfileBase):
-    user_id: UUID
 
-class DriverProfileRead(DriverProfileBase):
+class DriverProfileRead(BaseModel):
+    """Driver profile response with vehicle info."""
     user_id: UUID
+    vehicle_id: UUID
+    daily_seat_limit: int
     is_driver_active: bool
+    vehicle_number: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class DriverProfileUpdate(BaseModel):
+    """Partial update for driver profile."""
+    vehicle_id: Optional[UUID] = None
+    daily_seat_limit: Optional[int] = Field(None, ge=1, le=10)
+    is_driver_active: Optional[bool] = None

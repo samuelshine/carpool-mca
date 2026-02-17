@@ -6,11 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
 # Import models to ensure they are registered with SQLAlchemy
-from db.models import users, vehicles, rides, ride_requests, ride_participants
+from db.models import users, vehicles, rides, ride_requests, ride_participants, ride_history, driver_profiles
 from db.models import identity_verifications, driver_verifications, saved_addresses, college_students
 from routers import auth, users as users_router, vehicles as vehicles_router, rides as rides_router
 from routers import verification as verification_router
 from routers import addresses as addresses_router
+from routers import driver_profiles as driver_profiles_router
 
 settings = get_settings()
 
@@ -38,6 +39,7 @@ app.include_router(vehicles_router.router)
 app.include_router(rides_router.router)
 app.include_router(verification_router.router)
 app.include_router(addresses_router.router)
+app.include_router(driver_profiles_router.router)
 
 
 @app.get("/")
