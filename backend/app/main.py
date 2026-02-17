@@ -12,6 +12,7 @@ from routers import auth, users as users_router, vehicles as vehicles_router, ri
 from routers import verification as verification_router
 from routers import addresses as addresses_router
 from routers import driver_profiles as driver_profiles_router
+from routers import tracking as tracking_router
 
 settings = get_settings()
 
@@ -40,6 +41,7 @@ app.include_router(rides_router.router)
 app.include_router(verification_router.router)
 app.include_router(addresses_router.router)
 app.include_router(driver_profiles_router.router)
+app.include_router(tracking_router.router)
 
 
 @app.get("/")

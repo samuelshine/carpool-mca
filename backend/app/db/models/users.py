@@ -38,6 +38,9 @@ class User(Base):
     # Account status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
+    # Push notification token
+    fcm_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
     # Timestamps
     created_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()
