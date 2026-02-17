@@ -24,3 +24,9 @@ class AllowedGenderEnum(str, enum.Enum):
     any = "any"
     male = "male"
     female = "female"
+
+class VerificationStatusEnum(str, enum.Enum):
+    pending = "pending"
+    submitted = "submitted"
+    verified = "verified"
+    rejected = "rejected"

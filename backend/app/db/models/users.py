@@ -11,6 +11,7 @@ from sqlalchemy.orm import relationship
 class User(Base):
     """
     User model - passwordless authentication via OTP.
+    Supports tiered verification: unverified → identity verified → driver verified.
     """
     __tablename__ = "users"
 
@@ -18,9 +19,9 @@ class User(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(String(150), unique=True, nullable=True)
     phone_number: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
-    college_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    college_id: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     gender: Mapped[GenderEnum] = mapped_column(Enum(GenderEnum), nullable=False)
     community: Mapped[str | None] = mapped_column(String(50))
     profile_photo_url: Mapped[str | None] = mapped_column(String)
@@ -28,6 +29,11 @@ class User(Base):
     # Verification status
     is_phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_identity_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_driver_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # Admin role
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # Account status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
