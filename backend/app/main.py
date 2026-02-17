@@ -18,6 +18,7 @@ from routers import ratings as ratings_router
 from routers import reports as reports_router
 from routers import emergency_contacts as emergency_contacts_router
 from routers import sos as sos_router
+from routers import admin as admin_router
 
 settings = get_settings()
 
@@ -52,6 +53,7 @@ app.include_router(ratings_router.router)
 app.include_router(reports_router.router)
 app.include_router(emergency_contacts_router.router)
 app.include_router(sos_router.router)
+app.include_router(admin_router.router)
 
 
 @app.get("/")
