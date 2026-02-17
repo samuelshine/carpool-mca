@@ -68,7 +68,7 @@
 ---
 
 ### Phase 3: Geospatial Search & Route Matching
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: PostGIS-powered ride search — find rides near a passenger's pickup point along the driver's route.
 **Requirements**: REQ-15, REQ-16
 
