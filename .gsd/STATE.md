@@ -1,28 +1,16 @@
 # STATE.md — Project Memory
 
 ## Last Session Summary
-Phase 2 executed and verified (2026-02-17).
-- 4 plans, 2 waves, server starts clean
-- 9 new endpoints, 35 total routes
+Phase 3 planned (2026-02-17).
+- 2 plans, 1 wave
 
 ## Current Phase
-Phase 2: Ride Lifecycle & Driver Profiles — ✅ Complete
+Phase 3: Geospatial Search & Route Matching — Planned, Ready for Execution
 
 ## Next Action
-`/plan 3` — Plan Phase 3 (Geospatial Search & Route Matching)
+`/execute 3` — Execute Phase 3 plans
 
-## What Was Built (Phase 2)
-### New Endpoints (9)
-- POST   /rides/{id}/requests — request to join
-- GET    /rides/{id}/requests — view requests (driver only)
-- PUT    /rides/{id}/requests/{req_id} — accept/reject
-- GET    /rides/{id}/participants — confirmed riders
-- GET    /rides/my-rides — ride history
-- POST   /rides/{id}/start — open → ongoing
-- POST   /rides/{id}/complete — ongoing → completed + history
-- POST   /rides/{id}/cancel — → cancelled + auto-reject
-- POST/GET/PUT /driver-profiles/ — driver profile CRUD
-
-### New Files
-- schemas/ride_requests.py, schemas/driver_profiles.py
-- routers/driver_profiles.py
+## Plans
+### Wave 1
+- Plan 3.1: Proximity-Based Ride Search (ST_DWithin + distance endpoint)
+- Plan 3.2: Corridor Matching + Server Validation
