@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from uuid import UUID
 from datetime import date, time, datetime
-from typing import Optional
+from typing import List, Optional
 from .common import LocationPoint
 from .enums import RideStatusEnum, AllowedGenderEnum
 
@@ -25,3 +25,23 @@ class RideRead(RideBase):
     ride_id: UUID
     status: RideStatusEnum
     created_at: datetime
+
+
+class RideParticipantRead(BaseModel):
+    """Confirmed ride participant with user details."""
+    participant_id: UUID
+    user_id: UUID
+    full_name: str
+    phone_number: str
+    joined_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class RideDetailRead(RideRead):
+    """Extended ride details with driver info and participants."""
+    driver_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    participants: List[RideParticipantRead] = []
+
