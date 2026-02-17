@@ -10,6 +10,7 @@ from db.models import users, vehicles, rides, ride_requests, ride_participants
 from db.models import identity_verifications, driver_verifications, saved_addresses, college_students
 from routers import auth, users as users_router, vehicles as vehicles_router, rides as rides_router
 from routers import verification as verification_router
+from routers import addresses as addresses_router
 
 settings = get_settings()
 
@@ -36,6 +37,7 @@ app.include_router(users_router.router)
 app.include_router(vehicles_router.router)
 app.include_router(rides_router.router)
 app.include_router(verification_router.router)
+app.include_router(addresses_router.router)
 
 
 @app.get("/")

@@ -76,6 +76,58 @@ async def get_current_active_user(
     return current_user
 
 
+# =============================================================================
+# VERIFICATION-BASED DEPENDENCIES
+# Tiered access control: unverified → verified → driver → admin
+# =============================================================================
+
+async def get_verified_user(
+    user: Annotated[User, Depends(get_current_active_user)]
+) -> User:
+    """
+    Require identity-verified user.
+    Used for: searching rides, viewing ride details.
+    """
+    if not user.is_identity_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Identity verification required to access this feature. "
+                   "Please verify your college ID at POST /verification/identity"
+        )
+    return user
+
+
+async def get_verified_driver(
+    user: Annotated[User, Depends(get_verified_user)]
+) -> User:
+    """
+    Require driver-verified user (also implies identity-verified).
+    Used for: creating rides, managing vehicles.
+    """
+    if not user.is_driver_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Driver verification required to offer rides. "
+                   "Please verify your license at POST /verification/driver"
+        )
+    return user
+
+
+async def get_admin_user(
+    user: Annotated[User, Depends(get_current_active_user)]
+) -> User:
+    """
+    Require admin user.
+    Used for: admin panel, managing verifications, viewing reports.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return user
+
+
 def get_client_ip(request: Request) -> str:
     """Extract client IP from request."""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -87,3 +139,6 @@ def get_client_ip(request: Request) -> str:
 # Type aliases for cleaner dependency injection
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+VerifiedUser = Annotated[User, Depends(get_verified_user)]
+VerifiedDriver = Annotated[User, Depends(get_verified_driver)]
+AdminUser = Annotated[User, Depends(get_admin_user)]
