@@ -6,10 +6,10 @@ from .enums import GenderEnum
 
 class UserBase(BaseModel):
     full_name: str
-    email: EmailStr
     phone_number: str
-    college_id: str
     gender: GenderEnum
+    email: Optional[EmailStr] = None
+    college_id: Optional[str] = None
     community: Optional[str] = None
     profile_photo_url: Optional[str] = None
 
@@ -19,6 +19,10 @@ class UserCreate(UserBase):
 class UserRead(UserBase):
     user_id: UUID
     is_active: bool
+    is_phone_verified: bool
+    is_email_verified: bool
+    is_identity_verified: bool
+    is_driver_verified: bool
     created_at: datetime
     
     # Computed fields
@@ -32,4 +36,3 @@ class UserUpdate(BaseModel):
     community: Optional[str] = None
     profile_photo_url: Optional[str] = None
     gender: Optional[GenderEnum] = None
-

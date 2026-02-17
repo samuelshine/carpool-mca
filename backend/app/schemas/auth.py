@@ -3,6 +3,7 @@ Pydantic schemas for authentication endpoints.
 Passwordless OTP-based authentication.
 """
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field, EmailStr, field_validator
 import re
 
@@ -53,19 +54,19 @@ class PhoneVerifyOTPResponse(BaseModel):
 
 
 # =============================================================================
-# EMAIL OTP SCHEMAS
+# EMAIL VERIFICATION SCHEMAS (Post-Registration)
+# Email verification is a separate step after account creation.
+# User must be authenticated to verify their college email.
 # =============================================================================
 
 class EmailSendOTPRequest(BaseModel):
-    """Request to send OTP to college email."""
-    phone_verified_token: str
+    """Request to send OTP to college email. Requires authentication."""
     email: EmailStr
     
     @field_validator("email")
     @classmethod
     def validate_college_email(cls, v: str) -> str:
         # Pattern: *****@***christuniversity.in
-        # This matches any prefix @ any subdomain ending with christuniversity.in
         pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]*christuniversity\.in$"
         if not re.match(pattern, v.lower()):
             raise ValueError("Email must be a valid Christ University email (*@*christuniversity.in)")
@@ -87,26 +88,24 @@ class EmailVerifyOTPRequest(BaseModel):
 
 class EmailVerifyOTPResponse(BaseModel):
     """Response after verifying email OTP."""
-    email_verified_token: str
     email: str
-    phone: str
     message: str = "Email verified successfully"
 
 
 # =============================================================================
-# REGISTRATION SCHEMAS (Passwordless)
+# REGISTRATION SCHEMAS (Phone-Only)
+# Registration only requires a verified phone number.
+# College email and identity verification happen separately after registration.
 # =============================================================================
 
 class RegisterRequest(BaseModel):
-    """Full registration request after both verifications."""
+    """Registration request after phone verification only."""
     phone_verified_token: str
-    email_verified_token: str
     
-    # User details (no password needed)
+    # User details (no password, no email required)
     full_name: str = Field(..., min_length=2, max_length=100)
-    college_id: str = Field(..., min_length=5, max_length=50)
     gender: str = Field(..., pattern="^(male|female|other)$")
-    community: str | None = Field(None, max_length=50)
+    community: Optional[str] = Field(None, max_length=50)
 
 
 class RegisterResponse(BaseModel):
@@ -117,22 +116,24 @@ class RegisterResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """User data returned after registration."""
+    """User data returned in auth responses."""
     user_id: str
     full_name: str
-    email: str
+    email: Optional[str] = None
     phone_number: str
-    college_id: str
+    college_id: Optional[str] = None
     gender: str
     is_phone_verified: bool
     is_email_verified: bool
+    is_identity_verified: bool
+    is_driver_verified: bool
     
     class Config:
         from_attributes = True
 
 
 # =============================================================================
-# LOGIN SCHEMAS (OTP-based)
+# LOGIN SCHEMAS (OTP-based, unchanged)
 # =============================================================================
 
 class LoginSendOTPRequest(BaseModel):
@@ -175,4 +176,4 @@ class LoginResponse(BaseModel):
 class ErrorResponse(BaseModel):
     """Standard error response."""
     detail: str
-    error_code: str | None = None
+    error_code: Optional[str] = None
