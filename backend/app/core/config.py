@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
     
+    # OCR Service
+    OCR_PROVIDER: str = "console"  # "console" | "tesseract" | "google_vision"
+    
+    # Driver/Vehicle Verification Service
+    VERIFICATION_PROVIDER: str = "console"  # "console" | "surepass"
+    VERIFICATION_API_KEY: str = ""
+    
     def is_valid_college_email(self, email: str) -> bool:
         """Check if email matches college email pattern."""
         return bool(re.match(self.COLLEGE_EMAIL_PATTERN, email.lower()))
