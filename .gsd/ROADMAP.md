@@ -94,7 +94,7 @@
 ---
 
 ### Phase 5: Fare, Ratings, Reports & Safety
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Fare estimation/splitting, post-ride ratings, user reporting, emergency contacts, and SOS demo.
 **Requirements**: REQ-21 through REQ-26
 
