@@ -1,33 +1,20 @@
 # STATE.md — Project Memory
 
 ## Last Session Summary
-Phase 1 executed and verified (2026-02-17).
-- 5 plans, 3 waves, 4 commits
-- Server starts clean, all imports pass
+Phase 1 complete. Phase 2 planned (2026-02-17).
+- 4 plans, 2 waves
 
 ## Current Phase
-Phase 1: Auth Rework & Verification System — ✅ Complete
+Phase 2: Ride Lifecycle & Driver Profiles — Planned, Ready for Execution
 
 ## Next Action
-`/plan 2` — Plan Phase 2 (Ride Lifecycle & Matching)
+`/execute 2` — Execute Phase 2 plans
 
-## What Was Built
-### New Models (4)
-- IdentityVerification, DriverVerification, SavedAddress, CollegeStudent
+## Plans
+### Wave 1
+- Plan 2.1: Ride Request & Response (request to join, accept/reject, create participant)
+- Plan 2.2: Ride State Machine (start/complete/cancel + participants + my-rides)
 
-### New Services (3)
-- ocr_service.py (ConsoleOCR, TesseractOCR, GoogleVisionOCR)
-- verification_service.py (identity verification pipeline)
-- driver_verification_service.py (ConsoleVerification, Surepass)
-
-### New Routers (2)
-- verification.py (6 endpoints: identity, email, driver)
-- addresses.py (5 endpoints: CRUD + set-default)
-
-### Modified
-- User model: email/college_id nullable, +is_identity_verified, +is_driver_verified, +is_admin
-- Auth router: phone-only registration (3 steps), email moved to verification
-- Rides/vehicles: gated by VerifiedUser/VerifiedDriver
-- deps.py: +VerifiedUser, +VerifiedDriver, +AdminUser
-- config.py: +OCR_PROVIDER, +VERIFICATION_PROVIDER
-- seed_data.py: 23 college students + test user
+### Wave 2
+- Plan 2.3: Driver Profile CRUD (create/read/update)
+- Plan 2.4: Server Validation & Architecture Update
