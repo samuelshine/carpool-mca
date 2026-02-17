@@ -45,3 +45,7 @@ class RideDetailRead(RideRead):
     vehicle_number: Optional[str] = None
     participants: List[RideParticipantRead] = []
 
+
+class RideSearchResult(RideRead):
+    """Ride search result with distance from search point."""
+    distance_km: float = Field(..., description="Distance from search point in km")
