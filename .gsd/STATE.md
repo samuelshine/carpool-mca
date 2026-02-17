@@ -1,24 +1,33 @@
 # STATE.md — Project Memory
 
 ## Last Session Summary
-Phase 1 planned (2026-02-17).
-- 5 execution plans created across 3 waves
-- Wave 1: DB schema + auth rework
-- Wave 2: College ID verification (OCR) + driver verification
-- Wave 3: Feature gating + saved addresses
+Phase 1 executed and verified (2026-02-17).
+- 5 plans, 3 waves, 4 commits
+- Server starts clean, all imports pass
 
 ## Current Phase
-Phase 1: Auth Rework & Verification System — 📋 Planned
+Phase 1: Auth Rework & Verification System — ✅ Complete
 
 ## Next Action
-`/execute 1` — Execute all Phase 1 plans
+`/plan 2` — Plan Phase 2 (Ride Lifecycle & Matching)
 
-## Context
-- Backend-only project (Flutter frontend by separate team)
-- Existing endpoints: Auth (7), Users (2), Vehicles (3), Rides (3)
-- Key tech: FastAPI + async SQLAlchemy 2.0 + PostgreSQL/PostGIS (Supabase)
-- DB can be reset (no existing users)
-- Auth: Reworking to phone-only registration + separate identity/driver verification
-- Verification tier: Unverified → Verified student/faculty → Verified driver
-- OCR: Pluggable (console for demo, tesseract, google vision)
-- Driver verification: Pluggable (console for demo, Surepass for prod)
+## What Was Built
+### New Models (4)
+- IdentityVerification, DriverVerification, SavedAddress, CollegeStudent
+
+### New Services (3)
+- ocr_service.py (ConsoleOCR, TesseractOCR, GoogleVisionOCR)
+- verification_service.py (identity verification pipeline)
+- driver_verification_service.py (ConsoleVerification, Surepass)
+
+### New Routers (2)
+- verification.py (6 endpoints: identity, email, driver)
+- addresses.py (5 endpoints: CRUD + set-default)
+
+### Modified
+- User model: email/college_id nullable, +is_identity_verified, +is_driver_verified, +is_admin
+- Auth router: phone-only registration (3 steps), email moved to verification
+- Rides/vehicles: gated by VerifiedUser/VerifiedDriver
+- deps.py: +VerifiedUser, +VerifiedDriver, +AdminUser
+- config.py: +OCR_PROVIDER, +VERIFICATION_PROVIDER
+- seed_data.py: 23 college students + test user
