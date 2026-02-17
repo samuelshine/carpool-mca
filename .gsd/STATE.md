@@ -1,20 +1,18 @@
 # STATE.md — Project Memory
 
 ## Last Session Summary
-Phase 3 executed and verified (2026-02-17).
-- 2 plans, 1 wave, server starts clean
+Phase 4 planned (2026-02-17).
+- 3 plans, 2 waves
 
 ## Current Phase
-Phase 3: Geospatial Search & Route Matching — ✅ Complete
+Phase 4: Real-Time Tracking & Push Notifications — Planned, Ready for Execution
 
 ## Next Action
-`/plan 4` — Plan Phase 4 (Real-Time Tracking & Push Notifications)
+`/execute 4` — Execute Phase 4 plans
 
-## What Was Built (Phase 3)
-### New Endpoints (2)
-- GET /rides/search — PostGIS proximity search (pickup/dropoff/corridor)
-- GET /rides/distance — point-to-point distance calculation
-### Key Details
-- ST_DWithin for spatial filtering, ST_Distance for ordering
-- RideSearchResult schema with distance_km field
-- Corridor mode: searches near either start or end point
+## Plans
+### Wave 1
+- Plan 4.1: WebSocket Live Tracking (ConnectionManager + /ws/rides/{id}/track)
+- Plan 4.2: FCM Token Storage + Notification Service (console provider)
+### Wave 2
+- Plan 4.3: Wire Notifications into Ride Lifecycle + Validation
