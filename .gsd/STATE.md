@@ -1,18 +1,17 @@
 # STATE.md — Project Memory
 
 ## Last Session Summary
-Phase 4 planned (2026-02-17).
-- 3 plans, 2 waves
+Phase 4 executed and verified (2026-02-17).
+- 3 plans, 2 waves, server starts clean
 
 ## Current Phase
-Phase 4: Real-Time Tracking & Push Notifications — Planned, Ready for Execution
+Phase 4: Real-Time Tracking & Push Notifications — ✅ Complete
 
 ## Next Action
-`/execute 4` — Execute Phase 4 plans
+`/plan 5` — Plan Phase 5 (Fare, Ratings, Reports & Safety)
 
-## Plans
-### Wave 1
-- Plan 4.1: WebSocket Live Tracking (ConnectionManager + /ws/rides/{id}/track)
-- Plan 4.2: FCM Token Storage + Notification Service (console provider)
-### Wave 2
-- Plan 4.3: Wire Notifications into Ride Lifecycle + Validation
+## What Was Built (Phase 4)
+- WebSocket /ws/rides/{id}/track — live location broadcast
+- POST/DELETE /users/me/fcm-token — device token management
+- NotificationService with console provider
+- Notifications fire on: request, accept, reject, start, complete
