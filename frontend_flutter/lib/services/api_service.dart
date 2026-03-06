@@ -2,21 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
+
+/// Resolves the backend base URL from config.dart.
+/// On Android emulator you'd normally use 10.0.2.2, but when tunnelling
+/// (Pinggy / ngrok) the same public URL works on all platforms.
+String _resolveBaseUrl() => kBaseUrl;
 
 /// Base API service providing HTTP methods with auth headers and error handling.
 /// Supports refresh token rotation for persistent login.
 class ApiService {
   // Android emulator uses 10.0.2.2 to reach host localhost
   // For physical device, use your machine's IP address
-  // For Render deployment, override via UNIRIDE_API_URL environment or simply change below.
-  static String get baseUrl {
-    // Android emulator (10.0.2.2) or local IP (10.4.216.181) for physical devices
-    if (Platform.isAndroid) {
-      // return 'http://10.0.2.2:8000'; // uncomment if using official Android Emulator
-      return 'http://10.4.216.181:8000';
-    }
-    return 'http://10.4.216.181:8000'; // For iOS physical/simulators
-  }
+  static final String baseUrl = _resolveBaseUrl();
 
   // ----------------------------------------------------------------
   // Token storage helpers
