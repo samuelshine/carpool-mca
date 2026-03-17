@@ -97,6 +97,22 @@ async def get_verified_user(
     return user
 
 
+async def get_email_verified_user(
+    user: Annotated[User, Depends(get_current_active_user)]
+) -> User:
+    """
+    Require a college-email-verified user.
+    Used for: booking rides and other student-only actions.
+    """
+    if not user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="College email verification required to use this feature. "
+                   "Please verify your Christ University email first."
+        )
+    return user
+
+
 async def get_verified_driver(
     user: Annotated[User, Depends(get_verified_user)]
 ) -> User:
@@ -139,6 +155,7 @@ def get_client_ip(request: Request) -> str:
 # Type aliases for cleaner dependency injection
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+EmailVerifiedUser = Annotated[User, Depends(get_email_verified_user)]
 VerifiedUser = Annotated[User, Depends(get_verified_user)]
 VerifiedDriver = Annotated[User, Depends(get_verified_driver)]
 AdminUser = Annotated[User, Depends(get_admin_user)]

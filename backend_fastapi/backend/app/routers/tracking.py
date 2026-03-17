@@ -3,7 +3,7 @@ Tracking Router — Provides ride tracking info for live tracking UI.
 
 GET  /tracking/{ride_id}           — Returns current ride state for the live tracking screen.
 POST /tracking/{ride_id}/location  — Driver updates their live location (stored in-memory/cache).
-GET  /tracking/{ride_id}/location  — Get driver's latest live location.
+DELETE /tracking/{ride_id}/location — Clear driver's latest live location.
 """
 import uuid
 from typing import Optional
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from core.deps import DBSession, CurrentUser
 from db.models.rides import Ride
+from db.models.ride_participants import RideParticipant
 
 
 router = APIRouter(prefix="/tracking", tags=["Tracking"])
@@ -62,6 +63,23 @@ async def get_tracking_info(
         raise HTTPException(status_code=404, detail="Ride not found")
 
     is_driver = ride.driver_id == user.user_id
+    viewer_participant = None
+
+    if not is_driver:
+        participant_result = await db.execute(
+            select(RideParticipant).where(
+                RideParticipant.ride_id == ride_id,
+                RideParticipant.user_id == user.user_id,
+            )
+        )
+        participant = participant_result.scalar_one_or_none()
+        if participant:
+            viewer_participant = {
+                "participant_id": str(participant.participant_id),
+                "pickup_otp": participant.pickup_otp,
+                "pickup_address": participant.pickup_address,
+                "is_picked_up": participant.is_picked_up,
+            }
 
     driver_info = None
     if ride.driver:
@@ -84,14 +102,23 @@ async def get_tracking_info(
     return {
         "ride_id": str(ride.ride_id),
         "status": ride.status.value,
+        "viewer_role": "driver" if is_driver else (
+            "passenger" if viewer_participant is not None else "viewer"
+        ),
+        "viewer_participant": viewer_participant,
         "start_location": _geo_to_coords(ride.start_location),
         "end_location": _geo_to_coords(ride.end_location),
         "start_address": ride.start_address,
         "end_address": ride.end_address,
         "driver": driver_info,
         "vehicle": vehicle_info,
-        # Passengers see their pickup OTP; driver does not see it here
-        "pickup_otp": ride.pickup_otp if not is_driver else None,
+        # Backward-compatible field; real passenger flows should prefer
+        # `viewer_participant.pickup_otp` for the authenticated rider.
+        "pickup_otp": (
+            viewer_participant["pickup_otp"]
+            if viewer_participant is not None
+            else (ride.pickup_otp if not is_driver else None)
+        ),
         # Live driver location for map tracking
         "driver_location": live_location,
     }

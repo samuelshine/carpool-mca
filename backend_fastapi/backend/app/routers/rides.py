@@ -4,6 +4,8 @@ Rides Router — Multi-passenger ride lifecycle management.
 Endpoints:
   POST   /rides                              — Create ride (driver)
   GET    /rides                              — List available rides
+  GET    /rides/mine                         — List rides created by current driver
+  GET    /rides/history                      — List rides and requests for current user
   GET    /rides/{ride_id}                    — Get ride details
   PUT    /rides/{ride_id}/status             — Update ride status
   POST   /rides/{ride_id}/request            — Rider requests to join (with pickup loc)
@@ -15,12 +17,11 @@ Endpoints:
 import random
 import string
 import uuid
-from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from core.deps import DBSession, CurrentUser
+from core.deps import DBSession, CurrentUser, VerifiedDriver, EmailVerifiedUser
 from db.models.rides import Ride
 from db.models.vehicles import Vehicle
 from db.models.ride_requests import RideRequest
@@ -29,7 +30,7 @@ from db.models.users import User
 from db.enums import RideStatusEnum, RideRequestStatusEnum
 from schemas.rides import (
     RideCreate, RideRead, RideDetailRead, RideParticipantDetailRead,
-    RideStatusUpdate, OtpVerifyRequest,
+    RideStatusUpdate, OtpVerifyRequest, RideHistoryItemRead,
 )
 from schemas.ride_requests import (
     RideRequestCreate, RideRequestRead, RideRequestAction, RideRequestWithUser,
@@ -43,10 +44,30 @@ def _generate_otp() -> str:
     return "".join(random.choices(string.digits, k=4))
 
 
+def _history_state_from_ride_status(status: RideStatusEnum) -> str:
+    if status in {
+        RideStatusEnum.open,
+        RideStatusEnum.driver_arriving,
+        RideStatusEnum.driver_arrived,
+        RideStatusEnum.rider_picked_up,
+        RideStatusEnum.ongoing,
+    }:
+        return "active"
+    if status == RideStatusEnum.completed:
+        return "completed"
+    if status == RideStatusEnum.cancelled:
+        return "cancelled"
+    return "active"
+
+
+def _status_label_from_ride_status(status: RideStatusEnum) -> str:
+    return status.value.replace("_", " ").upper()
+
+
 # ─── Create ride ────────────────────────────────────────────────────────────
 
 @router.post("/", response_model=RideRead, status_code=status.HTTP_201_CREATED)
-async def create_ride(payload: RideCreate, user: CurrentUser, db: DBSession):
+async def create_ride(payload: RideCreate, user: VerifiedDriver, db: DBSession):
     """Create a new ride. Only the driver creates rides."""
     result = await db.execute(
         select(Vehicle).where(
@@ -100,6 +121,137 @@ async def list_rides(db: DBSession):
         select(Ride).where(Ride.status == RideStatusEnum.open)
     )
     return result.scalars().all()
+
+
+@router.get("/mine", response_model=list[RideRead])
+async def list_my_rides(user: CurrentUser, db: DBSession):
+    """List rides created by the current authenticated driver."""
+    result = await db.execute(
+        select(Ride)
+        .where(Ride.driver_id == user.user_id)
+        .order_by(Ride.ride_date.desc(), Ride.ride_time.desc(), Ride.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/history", response_model=list[RideHistoryItemRead])
+async def list_my_ride_history(user: CurrentUser, db: DBSession):
+    """List rides and requests relevant to the current user across roles."""
+    driver_result = await db.execute(
+        select(Ride)
+        .options(selectinload(Ride.driver), selectinload(Ride.vehicle))
+        .where(Ride.driver_id == user.user_id)
+        .order_by(Ride.ride_date.desc(), Ride.ride_time.desc(), Ride.created_at.desc())
+    )
+    driver_rides = driver_result.scalars().all()
+
+    participant_result = await db.execute(
+        select(RideParticipant)
+        .options(
+            selectinload(RideParticipant.ride).selectinload(Ride.driver),
+            selectinload(RideParticipant.ride).selectinload(Ride.vehicle),
+        )
+        .where(RideParticipant.user_id == user.user_id)
+    )
+    participations = participant_result.scalars().all()
+
+    request_result = await db.execute(
+        select(RideRequest)
+        .options(
+            selectinload(RideRequest.ride).selectinload(Ride.driver),
+            selectinload(RideRequest.ride).selectinload(Ride.vehicle),
+        )
+        .where(RideRequest.passenger_id == user.user_id)
+        .where(RideRequest.request_status.in_([
+            RideRequestStatusEnum.pending,
+            RideRequestStatusEnum.rejected,
+        ]))
+    )
+    requests = request_result.scalars().all()
+
+    items: list[RideHistoryItemRead] = []
+    included_ride_ids: set[uuid.UUID] = set()
+
+    for ride in driver_rides:
+        included_ride_ids.add(ride.ride_id)
+        items.append(
+            RideHistoryItemRead(
+                ride_id=ride.ride_id,
+                user_role="driver",
+                history_state=_history_state_from_ride_status(ride.status),
+                status_label=_status_label_from_ride_status(ride.status),
+                ride_status=ride.status,
+                start_address=ride.start_address,
+                end_address=ride.end_address,
+                ride_date=ride.ride_date,
+                ride_time=ride.ride_time,
+                available_seats=ride.available_seats,
+                estimated_fare=float(ride.estimated_fare) if ride.estimated_fare is not None else None,
+                driver_name=ride.driver.full_name if ride.driver else None,
+                vehicle_number=ride.vehicle.vehicle_number if ride.vehicle else None,
+                created_at=ride.created_at,
+            )
+        )
+
+    for participation in participations:
+        ride = participation.ride
+        if ride is None or ride.ride_id in included_ride_ids:
+            continue
+        included_ride_ids.add(ride.ride_id)
+        items.append(
+            RideHistoryItemRead(
+                ride_id=ride.ride_id,
+                user_role="passenger",
+                history_state=_history_state_from_ride_status(ride.status),
+                status_label=_status_label_from_ride_status(ride.status),
+                ride_status=ride.status,
+                start_address=ride.start_address,
+                end_address=ride.end_address,
+                ride_date=ride.ride_date,
+                ride_time=ride.ride_time,
+                available_seats=ride.available_seats,
+                estimated_fare=float(ride.estimated_fare) if ride.estimated_fare is not None else None,
+                driver_name=ride.driver.full_name if ride.driver else None,
+                vehicle_number=ride.vehicle.vehicle_number if ride.vehicle else None,
+                joined_at=participation.joined_at,
+                created_at=ride.created_at,
+            )
+        )
+
+    for request in requests:
+        ride = request.ride
+        if ride is None or ride.ride_id in included_ride_ids:
+            continue
+        items.append(
+            RideHistoryItemRead(
+                ride_id=ride.ride_id,
+                user_role="requester",
+                history_state="requested",
+                status_label=request.request_status.value.upper(),
+                ride_status=ride.status,
+                request_status=request.request_status.value,
+                start_address=ride.start_address,
+                end_address=ride.end_address,
+                ride_date=ride.ride_date,
+                ride_time=ride.ride_time,
+                available_seats=ride.available_seats,
+                estimated_fare=float(ride.estimated_fare) if ride.estimated_fare is not None else None,
+                driver_name=ride.driver.full_name if ride.driver else None,
+                vehicle_number=ride.vehicle.vehicle_number if ride.vehicle else None,
+                requested_at=request.requested_at,
+                created_at=ride.created_at,
+            )
+        )
+
+    items.sort(
+        key=lambda item: (
+            item.ride_date,
+            item.ride_time,
+            item.requested_at or item.joined_at or item.created_at,
+        ),
+        reverse=True,
+    )
+    return items
 
 
 # ─── Get ride details ───────────────────────────────────────────────────────
@@ -192,7 +344,7 @@ async def update_ride_status(
 async def request_join_ride(
     ride_id: uuid.UUID,
     payload: RideRequestCreate,
-    user: CurrentUser,
+    user: EmailVerifiedUser,
     db: DBSession,
 ):
     """Rider requests to join a ride, optionally providing a pickup location."""

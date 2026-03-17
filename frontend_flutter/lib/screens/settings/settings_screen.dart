@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../profile/user_profile.dart';
 import '../activity/ride_details_screen.dart';
-import '../activity/ride_history_screen.dart';
+import '../rides/activity_history_screen.dart';
 import 'preferences_screen.dart';
 import '../../main.dart';
 import '../auth/login.dart';
@@ -22,6 +22,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String userId = '';
   double? averageRating;
   int totalRatings = 0;
+  bool _isEmailVerified = false;
+  bool _isIdentityVerified = false;
+  bool _isDriverVerified = false;
   bool _isLoadingProfile = true;
 
   // --- TOGGLE STATE ---
@@ -41,9 +44,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final uid = data['user_id'] as String? ?? '';
       setState(() {
         name = data['full_name'] ?? '';
-        contactNumber = data['phone'] ?? '';
+        contactNumber = data['phone_number'] ?? '';
         orgEmail = data['email'] ?? '';
         userId = uid;
+        _isEmailVerified = data['is_email_verified'] == true;
+        _isIdentityVerified = data['is_identity_verified'] == true;
+        _isDriverVerified = data['is_driver_verified'] == true;
       });
       // Fetch rating summary
       if (uid.isNotEmpty) {
@@ -157,20 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                         const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.school, size: 14, color: primaryGreen),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Verified Student',
-                              style: TextStyle(
-                                color: primaryGreen,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
+                        _buildVerificationSummary(primaryGreen, textGrey),
                         const SizedBox(height: 4),
                         // Rating row
                         if (!_isLoadingProfile)
@@ -423,7 +416,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const RideHistoryScreen(),
+                            builder: (context) =>
+                                const ActivityHistoryScreen(),
                           ),
                         );
                       },
@@ -689,6 +683,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(
             subtitle,
             style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationSummary(Color primaryGreen, Color textGrey) {
+    final studentLabel = _isIdentityVerified
+        ? 'Identity Verified'
+        : _isEmailVerified
+        ? 'Email Verified'
+        : 'Verification Pending';
+
+    final studentColor = _isIdentityVerified
+        ? primaryGreen
+        : _isEmailVerified
+        ? const Color(0xFF2563EB)
+        : Colors.orange;
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _buildStatusPill(
+          icon: Icons.school,
+          label: studentLabel,
+          color: studentColor,
+        ),
+        _buildStatusPill(
+          icon: Icons.badge_outlined,
+          label: _isDriverVerified ? 'Driver Verified' : 'Driver Locked',
+          color: _isDriverVerified ? const Color(0xFF2563EB) : textGrey,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusPill({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+            ),
           ),
         ],
       ),

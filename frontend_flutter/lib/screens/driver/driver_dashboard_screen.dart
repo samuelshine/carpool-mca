@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../auth/common_widgets.dart';
 import '../../services/api_service.dart';
 import 'ride_requests_screen.dart';
+import 'create_ride_screen.dart';
 
 /// Driver dashboard: active ride, pending requests, create ride.
 class DriverDashboardScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     }
 
     // Load rides created by this driver
-    final ridesRes = await RideApiService.listRides();
+    final ridesRes = await RideApiService.listMyRides();
     if (ridesRes.success && ridesRes.data is List) {
       _myRides = ridesRes.data as List;
     }
@@ -42,6 +43,33 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _openCreateRide() async {
+    final createdRide = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (context) => const CreateRideScreen()),
+    );
+
+    if (!mounted || createdRide == null) return;
+
+    setState(() {
+      _myRides = [
+        createdRide,
+        ..._myRides.where(
+          (ride) => ride['ride_id']?.toString() != createdRide['ride_id']?.toString(),
+        ),
+      ];
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Ride created and added to your dashboard'),
+        backgroundColor: kPrimary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
@@ -75,18 +103,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Create ride from location search'),
-              backgroundColor: kPrimary,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-        },
+        onPressed: _openCreateRide,
         backgroundColor: kPrimary,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(

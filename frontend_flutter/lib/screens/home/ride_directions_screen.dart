@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../../services/routing_service.dart';
 import '../../services/api_service.dart';
-import 'ride_live_screen.dart';
+import 'available_rides_screen.dart';
 
 class RideDirectionsScreen extends StatefulWidget {
   final String fromLocation;
@@ -30,6 +30,7 @@ class _RideDirectionsScreenState extends State<RideDirectionsScreen> {
   double? _distanceKm;
   double? _durationMinutes;
   bool _isLoading = true;
+  bool _isOpeningMatches = false;
   String? _errorMessage;
 
   @override
@@ -117,6 +118,31 @@ class _RideDirectionsScreenState extends State<RideDirectionsScreen> {
       setState(() {
         _fareEstimate = (res.data!['total_fare'] as num?)?.toDouble();
       });
+    }
+  }
+
+  Future<void> _openAvailableRides() async {
+    if (_isOpeningMatches) return;
+
+    setState(() => _isOpeningMatches = true);
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AvailableRidesScreen(
+          fromLocation: widget.fromLocation,
+          toLocation: widget.toLocation,
+          fromLatLng: widget.fromLatLng,
+          toLatLng: widget.toLatLng,
+          routeDistanceKm: _distanceKm,
+          routeDurationMinutes: _durationMinutes,
+          fareEstimate: _fareEstimate,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      setState(() => _isOpeningMatches = false);
     }
   }
 
@@ -352,24 +378,12 @@ class _RideDirectionsScreenState extends State<RideDirectionsScreen> {
                 ),
                 const SizedBox(height: 12),
                 AuthButton(
-                  label: 'Request Ride',
-                  icon: Icons.directions_car,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RideLiveScreen(
-                          fromLocation: widget.fromLocation,
-                          toLocation: widget.toLocation,
-                          fromLatLng: widget.fromLatLng,
-                          toLatLng: widget.toLatLng,
-                          distanceKm: _distanceKm,
-                          durationMinutes: _durationMinutes,
-                          fareEstimate: _fareEstimate,
-                        ),
-                      ),
-                    );
-                  },
+                  label: 'Find Matching Rides',
+                  icon: Icons.search,
+                  isLoading: _isOpeningMatches,
+                  onPressed: _isLoading || _errorMessage != null
+                      ? null
+                      : _openAvailableRides,
                 ),
               ],
             ),

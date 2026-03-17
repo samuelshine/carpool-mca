@@ -222,7 +222,7 @@ class ApiService {
 class ApiResponse {
   final bool success;
   final int statusCode;
-  final Map<String, dynamic>? data;
+  final dynamic data;
   final String? error;
 
   ApiResponse({
@@ -234,12 +234,12 @@ class ApiResponse {
 
   factory ApiResponse.fromResponse(http.Response response) {
     final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
-    Map<String, dynamic>? data;
+    dynamic data;
     String? error;
 
     try {
       final body = jsonDecode(response.body);
-      if (body is Map<String, dynamic>) {
+      if (body is Map<String, dynamic> || body is List) {
         data = body;
       }
     } catch (_) {}
@@ -343,6 +343,7 @@ class RideApiService {
     required int availableSeats,
     required String allowedGender,
     required String vehicleId,
+    String? allowedCommunity,
     double? estimatedFare,
   }) async {
     return ApiService.post(
@@ -358,6 +359,8 @@ class RideApiService {
         'available_seats': availableSeats,
         'allowed_gender': allowedGender,
         'vehicle_id': vehicleId,
+        if (allowedCommunity != null && allowedCommunity.isNotEmpty)
+          'allowed_community': allowedCommunity,
         if (estimatedFare != null) 'estimated_fare': estimatedFare,
       },
     );
@@ -366,6 +369,16 @@ class RideApiService {
   /// GET /rides — List available rides.
   static Future<ApiResponse> listRides() async {
     return ApiService.get('/rides/', auth: true);
+  }
+
+  /// GET /rides/mine — List rides created by the current driver.
+  static Future<ApiResponse> listMyRides() async {
+    return ApiService.get('/rides/mine', auth: true);
+  }
+
+  /// GET /rides/history — List rides and requests relevant to the current user.
+  static Future<ApiResponse> listRideHistory() async {
+    return ApiService.get('/rides/history', auth: true);
   }
 
   /// GET /rides/{rideId} — Get ride details.
@@ -441,6 +454,24 @@ class RideApiService {
   /// GET /tracking/{rideId} — Get tracking info for live screen.
   static Future<ApiResponse> getTrackingInfo(String rideId) async {
     return ApiService.get('/tracking/$rideId', auth: true);
+  }
+
+  /// POST /tracking/{rideId}/location — Driver updates live location.
+  static Future<ApiResponse> updateDriverLocation(
+    String rideId, {
+    required double latitude,
+    required double longitude,
+  }) async {
+    return ApiService.post(
+      '/tracking/$rideId/location',
+      auth: true,
+      body: {'latitude': latitude, 'longitude': longitude},
+    );
+  }
+
+  /// DELETE /tracking/{rideId}/location — Clear driver live location.
+  static Future<ApiResponse> clearDriverLocation(String rideId) async {
+    return ApiService.delete('/tracking/$rideId/location', auth: true);
   }
 }
 

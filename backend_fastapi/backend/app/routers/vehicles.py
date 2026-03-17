@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from core.deps import DBSession, CurrentUser
+from core.deps import DBSession, CurrentUser, VerifiedDriver
 from db.models.vehicles import Vehicle
 from schemas.vehicles import VehicleCreate, VehicleRead
 
@@ -24,9 +24,9 @@ async def list_my_vehicles(user: CurrentUser, db: DBSession):
 
 @router.post("/", response_model=VehicleRead, status_code=status.HTTP_201_CREATED)
 async def add_vehicle(
-    payload: VehicleCreate, user: CurrentUser, db: DBSession
+    payload: VehicleCreate, user: VerifiedDriver, db: DBSession
 ):
-    """Register a new vehicle for the current user."""
+    """Register a new vehicle for the current driver-verified user."""
     # Check for duplicate plate number
     existing = await db.execute(
         select(Vehicle).where(Vehicle.vehicle_number == payload.vehicle_number)

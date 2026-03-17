@@ -15,11 +15,12 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
   late TabController _tabController;
   bool _isLoading = true;
   List<dynamic> _allRides = [];
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadRides();
   }
 
@@ -31,12 +32,15 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
 
   Future<void> _loadRides() async {
     setState(() => _isLoading = true);
-    final res = await RideApiService.listRides();
+    final res = await RideApiService.listRideHistory();
     if (mounted) {
       setState(() {
         _isLoading = false;
+        _errorMessage = res.success ? null : res.error;
         if (res.success && res.data is List) {
           _allRides = res.data as List;
+        } else {
+          _allRides = [];
         }
       });
     }
@@ -47,19 +51,21 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    // Separate into active vs completed
+    // Separate into real history states from backend.
     final activeRides = _allRides.where((r) {
-      final s = r['status'] ?? '';
-      return s == 'open' ||
-          s == 'driver_arriving' ||
-          s == 'driver_arrived' ||
-          s == 'ongoing' ||
-          s == 'rider_picked_up';
+      return r['history_state'] == 'active';
     }).toList();
 
-    final pastRides = _allRides.where((r) {
-      final s = r['status'] ?? '';
-      return s == 'completed' || s == 'cancelled';
+    final requestedRides = _allRides.where((r) {
+      return r['history_state'] == 'requested';
+    }).toList();
+
+    final completedRides = _allRides.where((r) {
+      return r['history_state'] == 'completed';
+    }).toList();
+
+    final cancelledRides = _allRides.where((r) {
+      return r['history_state'] == 'cancelled';
     }).toList();
 
     return Scaffold(
@@ -115,7 +121,9 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
                 ),
                 tabs: [
                   Tab(text: 'Active (${activeRides.length})'),
-                  Tab(text: 'Past (${pastRides.length})'),
+                  Tab(text: 'Requested (${requestedRides.length})'),
+                  Tab(text: 'Completed (${completedRides.length})'),
+                  Tab(text: 'Cancelled (${cancelledRides.length})'),
                 ],
               ),
             ),
@@ -126,6 +134,8 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
                   ? const Center(
                       child: CircularProgressIndicator(color: kPrimary),
                     )
+                  : _errorMessage != null
+                  ? _buildErrorState()
                   : TabBarView(
                       controller: _tabController,
                       children: [
@@ -135,12 +145,48 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
                           isEmpty: 'No active rides',
                         ),
                         _buildRideList(
-                          pastRides,
+                          requestedRides,
                           cardColor,
-                          isEmpty: 'No past rides yet',
+                          isEmpty: 'No requested rides yet',
+                        ),
+                        _buildRideList(
+                          completedRides,
+                          cardColor,
+                          isEmpty: 'No completed rides yet',
+                        ),
+                        _buildRideList(
+                          cancelledRides,
+                          cardColor,
+                          isEmpty: 'No cancelled rides',
                         ),
                       ],
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.orange, size: 42),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Unable to load ride history.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _loadRides,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
             ),
           ],
         ),
@@ -182,19 +228,25 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
   }
 
   Widget _buildRideCard(Map<String, dynamic> ride, Color cardColor) {
-    final status = ride['status'] ?? '';
-    final isActive =
-        status == 'open' ||
-        status == 'driver_arriving' ||
-        status == 'driver_arrived' ||
-        status == 'ongoing';
+    final historyState = ride['history_state'] ?? '';
+    final statusLabel = ride['status_label']?.toString() ?? 'UNKNOWN';
+    final userRole = ride['user_role']?.toString() ?? 'user';
+    final requestStatus = ride['request_status']?.toString();
+    final isActive = historyState == 'active';
 
-    final statusColor = switch (status) {
-      'open' => kPrimary,
-      'driver_arriving' || 'driver_arrived' || 'ongoing' => Colors.orange,
+    final statusColor = switch (historyState) {
+      'active' => kPrimary,
+      'requested' => requestStatus == 'rejected' ? Colors.red : Colors.orange,
       'completed' => Colors.green,
       'cancelled' => Colors.red,
       _ => kMuted,
+    };
+
+    final roleLabel = switch (userRole) {
+      'driver' => 'Driver',
+      'passenger' => 'Passenger',
+      'requester' => 'Request',
+      _ => 'Ride',
     };
 
     return Container(
@@ -223,7 +275,7 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  status.toString().replaceAll('_', ' ').toUpperCase(),
+                  statusLabel,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
@@ -234,9 +286,44 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
               ),
               const Spacer(),
               Text(
-                ride['ride_date'] ?? '',
+                '${ride['ride_date'] ?? ''}',
                 style: const TextStyle(color: kMuted, fontSize: 12),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: kBackground,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  roleLabel,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: kMuted,
+                  ),
+                ),
+              ),
+              if (ride['driver_name'] != null) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Driver: ${ride['driver_name']}',
+                    style: const TextStyle(color: kMuted, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -294,6 +381,30 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
                   '${ride['available_seats'] ?? 0} seats',
                   style: const TextStyle(color: kMuted, fontSize: 12),
                 ),
+              ],
+            ),
+          ],
+
+          if (ride['ride_time'] != null || ride['vehicle_number'] != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (ride['ride_time'] != null)
+                  Text(
+                    'Time: ${ride['ride_time']}',
+                    style: const TextStyle(color: kMuted, fontSize: 12),
+                  ),
+                if (ride['vehicle_number'] != null) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Vehicle: ${ride['vehicle_number']}',
+                      style: const TextStyle(color: kMuted, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ],
             ),
           ],

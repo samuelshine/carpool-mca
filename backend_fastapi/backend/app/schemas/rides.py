@@ -61,6 +61,27 @@ class RideSearchResult(RideRead):
     distance_km: float = Field(..., description="Distance from search point in km")
 
 
+class RideHistoryItemRead(BaseModel):
+    """Current-user ride history item across driver, rider, and request states."""
+    ride_id: UUID
+    user_role: str
+    history_state: str
+    status_label: str
+    ride_status: Optional[RideStatusEnum] = None
+    request_status: Optional[str] = None
+    start_address: str
+    end_address: str
+    ride_date: date
+    ride_time: time
+    available_seats: int
+    estimated_fare: Optional[float] = None
+    driver_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    requested_at: Optional[datetime] = None
+    joined_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
 class RideStatusUpdate(BaseModel):
     """Request to update ride status."""
     status: RideStatusEnum

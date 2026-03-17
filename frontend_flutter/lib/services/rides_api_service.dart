@@ -8,6 +8,14 @@ class RidesApiService {
     return ApiService.get('/rides/', auth: true);
   }
 
+  static Future<ApiResponse> listMyRides() async {
+    return ApiService.get('/rides/mine', auth: true);
+  }
+
+  static Future<ApiResponse> listRideHistory() async {
+    return ApiService.get('/rides/history', auth: true);
+  }
+
   // ── Get ride detail ───────────────────────────────────────────────
 
   static Future<ApiResponse> getRide(String rideId) async {
@@ -140,6 +148,10 @@ class RidesApiService {
       auth: true,
       body: {'latitude': lat, 'longitude': lng},
     );
+  }
+
+  static Future<ApiResponse> clearDriverLocation(String rideId) async {
+    return ApiService.delete('/tracking/$rideId/location', auth: true);
   }
 
   // ── Fare estimation ───────────────────────────────────────────────

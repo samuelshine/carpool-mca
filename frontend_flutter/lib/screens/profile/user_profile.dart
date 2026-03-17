@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:frontend_flutter/screens/profile/verification_screen.dart';
 import 'package:frontend_flutter/screens/auth/login.dart';
 import 'package:frontend_flutter/main.dart';
+import '../../services/api_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -23,6 +24,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String contactNumber = 'Not available';
   String orgEmail = 'Not available';
   String personalEmail = 'Not available';
+  bool _isEmailVerified = false;
+  bool _isIdentityVerified = false;
+  bool _isDriverVerified = false;
 
   bool _isLoading = true;
 
@@ -33,12 +37,26 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _loadUserProfile() async {
-    final profile = await AuthService.getUserProfile();
+    final profileRes = await UserApiService.getMyProfile();
+    if (profileRes.success && profileRes.data is Map<String, dynamic>) {
+      final profile = profileRes.data as Map<String, dynamic>;
+      setState(() {
+        name = profile['full_name'] ?? 'User';
+        contactNumber = profile['phone_number'] ?? 'Not available';
+        orgEmail = profile['email'] ?? 'Not available';
+        _isEmailVerified = profile['is_email_verified'] == true;
+        _isIdentityVerified = profile['is_identity_verified'] == true;
+        _isDriverVerified = profile['is_driver_verified'] == true;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final localProfile = await AuthService.getUserProfile();
     setState(() {
-      name = profile['name'] ?? 'User';
-      contactNumber = profile['phone'] ?? 'Not available';
-      orgEmail = profile['email'] ?? 'Not available';
-      // personalEmail stays as fallback since we don't collect it in signup
+      name = localProfile['name'] ?? 'User';
+      contactNumber = localProfile['phone'] ?? 'Not available';
+      orgEmail = localProfile['email'] ?? 'Not available';
       _isLoading = false;
     });
   }
@@ -57,6 +75,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     Map<String, String>? existingVehicle,
     int? index,
   }) async {
+    if (!_isDriverVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Driver verification is required before you can add vehicles.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -236,27 +266,68 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildVerificationButton() {
-    return SizedBox(
+    return Container(
       width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const VerificationScreen()),
-          );
-        },
-        icon: const Icon(Icons.verified_user_outlined, color: Colors.white),
-        label: const Text(
-          'Get Verified Profile',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blueAccent,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildVerificationChip(
+                label: _isIdentityVerified
+                    ? 'Identity Verified'
+                    : _isEmailVerified
+                    ? 'Email Verified'
+                    : 'Verification Pending',
+                color: _isIdentityVerified
+                    ? Colors.green
+                    : _isEmailVerified
+                    ? Colors.blue
+                    : Colors.orange,
+              ),
+              _buildVerificationChip(
+                label: _isDriverVerified ? 'Driver Verified' : 'Driver Locked',
+                color: _isDriverVerified ? Colors.blueAccent : Colors.grey,
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const VerificationScreen(),
+                  ),
+                ).then((_) => _loadUserProfile());
+              },
+              icon: const Icon(
+                Icons.verified_user_outlined,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'Open Verification Center',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -281,8 +352,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               child: Column(
                 children: [
                   Text(
-                    'No vehicle added yet',
+                    _isDriverVerified
+                        ? 'No vehicle added yet'
+                        : 'Driver verification required before adding vehicles',
                     style: TextStyle(color: Colors.grey.shade600),
+                    textAlign: TextAlign.center,
                   ),
                   TextButton(
                     onPressed: () => _openVehicleForm(),
@@ -347,6 +421,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               },
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationChip({
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
