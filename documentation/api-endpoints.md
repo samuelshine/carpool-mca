@@ -1,5 +1,7 @@
 # API Endpoints
 
+Last reviewed: 2026-03-19
+
 Base app: FastAPI in `backend_fastapi/backend/app/main.py`
 
 Public utility endpoints:
@@ -80,7 +82,13 @@ Auth: bearer token required
   Input:
   - `vehicle_type`
   - `vehicle_number`
-  Notes: backend currently stores only type and number, even though some Flutter forms collect more vehicle UI fields.
+  Notes: backend stores only type and number, and the main profile vehicle form is now aligned to those fields.
+
+- `PUT /vehicles/{vehicle_id}`
+  Update a vehicle owned by the current user.
+  Input:
+  - optional `vehicle_type`
+  - optional `vehicle_number`
 
 - `DELETE /vehicles/{vehicle_id}`
   Delete a vehicle owned by the current user.
@@ -188,6 +196,7 @@ Auth: bearer token required
   Notes:
   - merges driver-owned rides, accepted passenger rides, and pending/rejected ride requests
   - each item includes `history_state` so the client can render `active`, `requested`, `completed`, and `cancelled`
+  - each item now includes `driver_id`, which the mobile reporting flow uses when a rider reports a driver
   - intended for the app activity/history screen
 
 - `GET /rides/{ride_id}`
@@ -294,6 +303,11 @@ Endpoints:
   - `rated_user_id`
   - `rating_value`
   - optional `comment`
+  Notes:
+  - ride must be completed
+  - passengers can rate only the driver for that ride
+  - drivers can rate only confirmed participants from that ride
+  - duplicate ratings for the same rater/rated user/ride are rejected
 
 - `GET /ratings/ride/{ride_id}`
   List all ratings for a ride.
@@ -345,6 +359,9 @@ Auth: bearer token required
 
 - `GET /sos/active`
   Returns SOS alerts created by the current user.
+  Notes:
+  - the route name is legacy, but the payload now includes lifecycle fields such as `status`, `resolved_at`, and `resolution_notes`
+  - mobile surfaces can use this to show alert history and current resolution state
 
 ## Admin
 
@@ -359,7 +376,13 @@ Auth: bearer token required, `is_admin = true`
   - `page_size`
 
 - `GET /admin/users/{user_id}`
-  User detail view.
+  Enriched user detail view for support and moderation.
+  Includes:
+  - core user profile and verification flags
+  - latest identity and driver verification records
+  - vehicles
+  - recent rides, requests, reports, and SOS alerts
+  - summary counts for ride activity and moderation context
 
 - `PUT /admin/users/{user_id}/deactivate`
   Deactivate non-admin user.
@@ -395,22 +418,54 @@ Auth: bearer token required, `is_admin = true`
 
 ### SOS and stats
 
+- `GET /admin/sos`
+  List SOS alerts for admin triage.
+  Query params:
+  - `status`: `all`, `open`, `resolved`, or `closed`
+  - `page_size`
+  Notes:
+  - returns alert lifecycle state plus user, ride, and admin-resolution context
+  - intended to drive the admin incident desk
+
 - `GET /admin/sos/active`
-  Returns SOS alerts ordered by most recent.
-  Notes: current implementation returns all alerts in the table and does not track resolved state.
+  Returns open SOS alerts ordered by most recent.
+  Notes:
+  - compatibility alias for unresolved alerts only
+
+- `PUT /admin/sos/{alert_id}/status`
+  Update SOS lifecycle status.
+  Input:
+  - `status`: `open`, `resolved`, or `closed`
+  - optional `notes`
+  Notes:
+  - used by the admin web incident desk
+  - when moved to `resolved` or `closed`, the backend stores `resolved_at` and `resolved_by_user_id`
+
+- `PUT /admin/sos/{alert_id}/resolve`
+  Convenience endpoint to mark an alert resolved.
+  Input: optional `notes`
+
+- `PUT /admin/sos/{alert_id}/close`
+  Convenience endpoint to mark an alert closed.
+  Input: optional `notes`
 
 - `GET /admin/stats`
   Returns dashboard aggregates for users, verifications, open rides, and SOS totals.
+  SOS payload includes:
+  - `total_triggered`
+  - `open`
+  - `resolved`
+  - `closed`
 
 ## Addresses
 
 - `GET /addresses/`
   Placeholder endpoint returning `{"status": "not_implemented"}`.
+  Notes: current product choice keeps saved addresses local-only in the mobile app, so this backend route is intentionally unused for now.
 
 ## API observations for future tasks
 
 - Driver dashboard should use `GET /rides/mine`; activity/history should use `GET /rides/history` rather than `GET /rides/`.
 - `GET /tracking/{ride_id}` is richer for location data than `GET /rides/{ride_id}` right now.
 - Real rider live tracking should prefer `GET /tracking/{ride_id}` plus `viewer_participant` instead of relying on the legacy ride-level pickup OTP field.
-- Admin router docstring mentions SOS resolve support, but no `PUT /admin/sos/{alert_id}/resolve` route is actually implemented in the current file.
 - Vehicle verification is not yet a backend concept. Vehicles can be added by driver-verified users, but there is no `/vehicles/.../verify` or admin vehicle-review flow yet, so “verified vehicle required for ride creation” is still a future backend task.

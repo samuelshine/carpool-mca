@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from core.deps import DBSession, CurrentUser, VerifiedDriver
 from db.models.vehicles import Vehicle
-from schemas.vehicles import VehicleCreate, VehicleRead
+from schemas.vehicles import VehicleCreate, VehicleRead, VehicleUpdate
 
 
 router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -44,6 +44,50 @@ async def add_vehicle(
         vehicle_number=payload.vehicle_number.upper(),
     )
     db.add(vehicle)
+    await db.flush()
+    await db.refresh(vehicle)
+    return vehicle
+
+
+@router.put("/{vehicle_id}", response_model=VehicleRead)
+async def update_vehicle(
+    vehicle_id: uuid.UUID,
+    payload: VehicleUpdate,
+    user: VerifiedDriver,
+    db: DBSession,
+):
+    """Update a vehicle owned by the current driver-verified user."""
+    result = await db.execute(
+        select(Vehicle).where(
+            Vehicle.vehicle_id == vehicle_id,
+            Vehicle.user_id == user.user_id,
+        )
+    )
+    vehicle = result.scalar_one_or_none()
+    if not vehicle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vehicle not found or does not belong to you.",
+        )
+
+    if payload.vehicle_number is not None:
+        normalized_number = payload.vehicle_number.upper()
+        existing = await db.execute(
+            select(Vehicle).where(
+                Vehicle.vehicle_number == normalized_number,
+                Vehicle.vehicle_id != vehicle_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Vehicle with this number already registered.",
+            )
+        vehicle.vehicle_number = normalized_number
+
+    if payload.vehicle_type is not None:
+        vehicle.vehicle_type = payload.vehicle_type
+
     await db.flush()
     await db.refresh(vehicle)
     return vehicle

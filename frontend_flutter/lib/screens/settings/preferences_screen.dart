@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../main.dart';
+import '../../services/demo_mode_service.dart';
+import '../../services/location_service.dart';
+import 'demo_center_screen.dart';
 
 class PreferencesScreen extends StatefulWidget {
   const PreferencesScreen({Key? key}) : super(key: key);
@@ -15,20 +18,10 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   bool pushNotifications = false;
   bool emailUpdates = false;
   bool locationSharing = false; // Start false until we verify GPS & permissions
+  bool demoModeEnabled = false;
 
-  // --- DYNAMIC DATA FOR LOCATIONS ---
-  List<Map<String, dynamic>> savedLocations = [
-    {
-      'title': 'Home',
-      'subtitle': '123 University Ave, Block A',
-      'icon': Icons.home,
-    },
-    {
-      'title': 'Campus',
-      'subtitle': 'Main Square Gate 4, Sector 62',
-      'icon': Icons.school,
-    },
-  ];
+  List<Map<String, dynamic>> savedLocations = [];
+  bool _isLoadingSavedLocations = true;
 
   // Colors matching settings_screen
   final Color primaryGreen = const Color(0xFF10B981);
@@ -40,7 +33,30 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   void initState() {
     super.initState();
     isDarkMode = themeNotifier.isDarkMode;
+    demoModeEnabled = demoModeNotifier.isEnabled;
+    demoModeNotifier.addListener(_handleDemoModeChanged);
     _checkInitialPermissions();
+    _loadSavedLocations();
+  }
+
+  @override
+  void dispose() {
+    demoModeNotifier.removeListener(_handleDemoModeChanged);
+    super.dispose();
+  }
+
+  void _handleDemoModeChanged() {
+    if (!mounted) return;
+    setState(() => demoModeEnabled = demoModeNotifier.isEnabled);
+  }
+
+  Future<void> _loadSavedLocations() async {
+    final saved = await LocationService.getSavedAddresses();
+    if (!mounted) return;
+    setState(() {
+      savedLocations = saved;
+      _isLoadingSavedLocations = false;
+    });
   }
 
   // Check BOTH permissions when the screen loads
@@ -127,19 +143,22 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   void _showAddressBottomSheet({int? index}) {
     final isEditing = index != null;
 
-    // Parse existing data if editing
-    String initialTitle = isEditing ? savedLocations[index]['title'] : 'Home';
-    String initialSubtitle = isEditing ? savedLocations[index]['subtitle'] : '';
+    final currentAddress = isEditing ? savedLocations[index] : null;
+    final initialType = currentAddress?['type']?.toString() ?? 'home';
+    final initialTitle = currentAddress?['title']?.toString() ?? 'Home';
+    final initialAddress = currentAddress?['address']?.toString() ?? '';
 
-    // Attempt to split the subtitle back into flat and area
-    List<String> addressParts = initialSubtitle.split(', ');
+    final addressParts = initialAddress.split(', ');
     String initialFlat = addressParts.isNotEmpty ? addressParts[0] : '';
-    String initialArea = addressParts.length > 1 ? addressParts[1] : '';
+    String initialArea = addressParts.length > 1
+        ? addressParts.sublist(1).join(', ')
+        : '';
 
-    // Figure out initial tag
-    String activeTag = ['Home', 'Work'].contains(initialTitle)
-        ? initialTitle
-        : 'Other';
+    String activeTag = switch (initialType) {
+      'home' => 'Home',
+      'work' => 'Work',
+      _ => 'Other',
+    };
 
     final flatController = TextEditingController(text: initialFlat);
     final areaController = TextEditingController(text: initialArea);
@@ -304,11 +323,18 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  savedLocations.removeAt(index);
-                                });
-                                Navigator.pop(context);
+                              onPressed: () async {
+                                final addressId = savedLocations[index]['id']
+                                    ?.toString();
+                                if (addressId != null) {
+                                  await LocationService.deleteSavedAddress(
+                                    addressId,
+                                  );
+                                  await _loadSavedLocations();
+                                }
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                }
                               },
                               child: const Icon(
                                 Icons.delete_outline,
@@ -329,35 +355,63 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                               ),
                               elevation: 0,
                             ),
-                            onPressed: () {
+                            onPressed: () async {
                               if (flatController.text.isNotEmpty &&
                                   areaController.text.isNotEmpty) {
-                                String finalTitle = activeTag == 'Other'
+                                final finalTitle = activeTag == 'Other'
                                     ? (customTagController.text.isEmpty
                                           ? 'Other'
                                           : customTagController.text)
                                     : activeTag;
+                                final finalAddress =
+                                    '${flatController.text}, ${areaController.text}';
 
-                                IconData finalIcon = activeTag == 'Home'
-                                    ? Icons.home
-                                    : (activeTag == 'Work'
-                                          ? Icons.work
-                                          : Icons.location_on);
+                                double? lat;
+                                double? lng;
+                                if (isEditing &&
+                                    currentAddress?['address']
+                                            ?.toString()
+                                            .trim() ==
+                                        finalAddress.trim()) {
+                                  lat = (currentAddress?['lat'] as num?)
+                                      ?.toDouble();
+                                  lng = (currentAddress?['lng'] as num?)
+                                      ?.toDouble();
+                                }
 
-                                setState(() {
-                                  final newLocation = {
-                                    'title': finalTitle,
-                                    'subtitle':
-                                        '${flatController.text}, ${areaController.text}',
-                                    'icon': finalIcon,
-                                  };
-
-                                  if (isEditing) {
-                                    savedLocations[index] = newLocation;
-                                  } else {
-                                    savedLocations.add(newLocation);
+                                if (lat == null || lng == null) {
+                                  final results =
+                                      await LocationService.forwardGeocode(
+                                        finalAddress,
+                                      );
+                                  if (results.isEmpty) {
+                                    if (!mounted) return;
+                                    _showSimpleSnackBar(
+                                      'We could not locate that address. Please make it more specific.',
+                                    );
+                                    return;
                                   }
-                                });
+                                  lat = (results.first['lat'] as num)
+                                      .toDouble();
+                                  lng = (results.first['lng'] as num)
+                                      .toDouble();
+                                }
+
+                                await LocationService.saveSavedAddress(
+                                  id: currentAddress?['id']?.toString(),
+                                  title: finalTitle.trim(),
+                                  address: finalAddress.trim(),
+                                  lat: lat,
+                                  lng: lng,
+                                  type: activeTag == 'Home'
+                                      ? 'home'
+                                      : activeTag == 'Work'
+                                      ? 'work'
+                                      : 'other',
+                                  makePrimary: !isEditing,
+                                );
+                                await _loadSavedLocations();
+                                if (!context.mounted) return;
                                 Navigator.pop(context);
                               }
                             },
@@ -463,6 +517,93 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
             ),
             const SizedBox(height: 24),
 
+            _buildSectionHeader('DEMO MODE'),
+            _buildContainer(
+              child: Column(
+                children: [
+                  _buildSwitchTile(
+                    icon: Icons.smart_display_outlined,
+                    title: 'Enable Demo Mode',
+                    subtitle:
+                        'Unlock seeded rider, driver, safety, and trust walkthroughs for presentations and offline-style demos.',
+                    value: demoModeEnabled,
+                    onChanged: (val) async {
+                      setState(() => demoModeEnabled = val);
+                      await demoModeNotifier.setEnabled(val);
+                      if (!mounted) return;
+                      _showSimpleSnackBar(
+                        val
+                            ? 'Demo Mode enabled. Open Demo Center to start the walkthrough.'
+                            : 'Demo Mode disabled. The app is back to normal operation.',
+                      );
+                    },
+                  ),
+                  if (demoModeEnabled) ...[
+                    const Divider(height: 1, indent: 60),
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DemoCenterScreen(),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: primaryGreen.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.rocket_launch_outlined,
+                                color: primaryGreen,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Open Demo Center',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Jump into scripted rider, driver, safety, and profile demos.',
+                                    style: TextStyle(
+                                      color: textGrey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16,
+                              color: textGrey,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // --- NOTIFICATIONS ---
             _buildSectionHeader('NOTIFICATIONS'),
             _buildContainer(
@@ -491,21 +632,51 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
             _buildContainer(
               child: Column(
                 children: [
-                  ...savedLocations.asMap().entries.map((entry) {
-                    int index = entry.key;
-                    Map<String, dynamic> location = entry.value;
-                    return Column(
-                      children: [
-                        _buildLocationTile(
-                          icon: location['icon'],
-                          title: location['title'],
-                          subtitle: location['subtitle'],
-                          onTap: () => _showAddressBottomSheet(index: index),
-                        ),
-                        const Divider(height: 1, indent: 60),
-                      ],
-                    );
-                  }).toList(),
+                  if (_isLoadingSavedLocations)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (savedLocations.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Text(
+                            'No saved locations yet.',
+                            style: TextStyle(
+                              color: textGrey,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Save an address from route search or add one here for local reuse.',
+                            style: TextStyle(color: textGrey, fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...savedLocations.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final location = entry.value;
+                      return Column(
+                        children: [
+                          _buildLocationTile(
+                            icon: _iconForSavedType(
+                              location['type']?.toString(),
+                            ),
+                            title:
+                                location['title']?.toString() ?? 'Saved Place',
+                            subtitle: location['address']?.toString() ?? '',
+                            onTap: () => _showAddressBottomSheet(index: index),
+                          ),
+                          const Divider(height: 1, indent: 60),
+                        ],
+                      );
+                    }),
 
                   InkWell(
                     onTap: () => _showAddressBottomSheet(),
@@ -685,5 +856,16 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
         ),
       ),
     );
+  }
+
+  IconData _iconForSavedType(String? type) {
+    switch (type) {
+      case 'home':
+        return Icons.home;
+      case 'work':
+        return Icons.work;
+      default:
+        return Icons.location_on;
+    }
   }
 }

@@ -1,5 +1,7 @@
 # Architecture
 
+Last reviewed: 2026-03-19
+
 ## Repository structure
 
 ### Root
@@ -56,7 +58,7 @@ Responsibilities:
 
 Important note:
 
-- The Flutter app is not uniformly backend-driven. Some flows use the real FastAPI API. Others are UI-only or simulated.
+- The Flutter app is not uniformly backend-driven. The primary booking, create-ride, verification, history, and live-ride flows now use real backend APIs, while some secondary screens still remain UI-only, compatibility-first, or simulated.
 
 ### 3. Admin web app
 
@@ -215,17 +217,16 @@ These exist in the data model but are not all fully wired into current frontend 
 
 - `ApiService`: base HTTP wrapper and token storage
 - `AuthApiService`: OTP auth flow
-- `RideApiService`: primary backend ride APIs
-- `RidesApiService`: overlapping ride API wrapper with broader feature coverage
+- `RideApiService`: ride and tracking APIs within the shared mobile service layer
+- `VerificationApiService`: email, identity, and driver verification APIs within the shared mobile service layer
 - `LocationService`: GPS, reverse geocoding, forward geocoding, saved pickup persistence
 - `RoutingService`: OSRM route retrieval
 - `RideSimulationService`: client-only ride progression simulation
 
 Important note:
 
-- there are two ride-oriented service wrappers, `RideApiService` and `RidesApiService`
-- they overlap but are not identical
-- future work should avoid creating a third abstraction and should probably consolidate these two
+- the mobile app now keeps one clear API source of truth in `api_service.dart`
+- future work should extend the shared service classes there instead of creating new feature-specific wrapper files
 
 ### UI architecture
 
@@ -248,23 +249,26 @@ The Flutter app is organized mainly by feature folders:
 3. choose pickup in `LocationSearchScreen`
 4. choose a Christ campus destination
 5. preview route and fare
-6. move into a ride/live-tracking experience
+6. browse matching open rides in `AvailableRidesScreen`
+7. submit a real join request
+8. move into live tracking only when there is a real accepted ride context
 
 Current implementation note:
 
-- this flow is more ride-preview / simulation oriented than a fully integrated marketplace search flow
+- this is now a real booking flow, but ride matching is still lightweight and mostly destination-radius based over the generic open-rides dataset
 
 ### Driver management flow
 
 1. open driver dashboard
 2. inspect driver profile and existing rides
-3. inspect ride requests
-4. accept/reject requests
-5. see participants and OTPs
+3. create a ride from `CreateRideScreen`
+4. inspect ride requests
+5. accept/reject requests
+6. see participants and OTPs
 
 Current implementation note:
 
-- driver ride creation UX is still incomplete from the dashboard side
+- driver ride creation is now surfaced in-app, but still depends on the current backend constraints around driver verification and available backend vehicles
 
 ### Admin review flow
 
@@ -279,6 +283,5 @@ Current implementation note:
 - Docker runs Uvicorn with 4 workers, which makes in-memory tracking even less consistent across workers.
 - Some backend responses still return placeholder location values in `GET /rides/{ride_id}`.
 - Some frontend screens are mock-first and do not persist through backend APIs.
-- Some frontend code expects API shapes slightly differently from the backend.
+- Some frontend code still uses overlapping service layers and older compatibility wrappers.
 - The admin app hardcodes `http://localhost:8000` as its API base URL.
-

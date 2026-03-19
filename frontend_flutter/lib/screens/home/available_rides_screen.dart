@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
+import 'ride_live_screen.dart';
 
 class AvailableRidesScreen extends StatefulWidget {
   final String fromLocation;
@@ -11,6 +13,7 @@ class AvailableRidesScreen extends StatefulWidget {
   final double? routeDistanceKm;
   final double? routeDurationMinutes;
   final double? fareEstimate;
+  final bool demoMode;
 
   const AvailableRidesScreen({
     super.key,
@@ -21,6 +24,7 @@ class AvailableRidesScreen extends StatefulWidget {
     this.routeDistanceKm,
     this.routeDurationMinutes,
     this.fareEstimate,
+    this.demoMode = false,
   });
 
   @override
@@ -50,6 +54,18 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    if (widget.demoMode) {
+      final matches = _buildMatches(DemoModeData.demoOpenRides());
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isEmailVerified = true;
+        _totalOpenRides = matches.length;
+        _matches = matches;
+      });
+      return;
+    }
 
     final profileRes = await UserApiService.getMyProfile();
     final res = await RideApiService.listRides();
@@ -96,7 +112,10 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
       final start = _parseLocation(ride['start_location']);
       final end = _parseLocation(ride['end_location']);
 
-      if (rideId == null || start == null || end == null || availableSeats <= 0) {
+      if (rideId == null ||
+          start == null ||
+          end == null ||
+          availableSeats <= 0) {
         continue;
       }
 
@@ -157,6 +176,57 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
   }
 
   Future<void> _requestRide(_RideMatch match) async {
+    if (widget.demoMode) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Demo Request Approved',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'For demos, the request is accepted immediately so you can continue into live ride tracking.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Stay Here'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  this.context,
+                  MaterialPageRoute(
+                    builder: (_) => RideLiveScreen(
+                      fromLocation: widget.fromLocation,
+                      toLocation: widget.toLocation,
+                      fromLatLng: widget.fromLatLng,
+                      toLatLng: widget.toLatLng,
+                      distanceKm: widget.routeDistanceKm,
+                      durationMinutes: widget.routeDurationMinutes,
+                      fareEstimate: match.estimatedFare ?? widget.fareEstimate,
+                      driverName: DemoModeData.driverName,
+                      demoMode: true,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: kPrimary),
+              child: const Text(
+                'Open Live Demo',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isRequesting = true;
       _requestingRideId = match.rideId;
@@ -273,8 +343,22 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
           children: [
             _buildQuerySummary(cardColor),
             const SizedBox(height: 16),
-            if (!_isEmailVerified)
-              _buildAccessNotice(cardColor),
+            if (widget.demoMode) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: kPrimary.withValues(alpha: 0.2)),
+                ),
+                child: const Text(
+                  'These ride options are seeded for demos. Requesting one will jump straight into the live-trip walkthrough.',
+                  style: TextStyle(color: kMuted, height: 1.4),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (!_isEmailVerified) _buildAccessNotice(cardColor),
             if (!_isEmailVerified) const SizedBox(height: 16),
             if (_isLoading)
               _buildLoadingCard(cardColor)
@@ -336,7 +420,8 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
             label: 'Destination',
             value: widget.toLocation,
           ),
-          if (widget.fareEstimate != null || widget.routeDurationMinutes != null) ...[
+          if (widget.fareEstimate != null ||
+              widget.routeDurationMinutes != null) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -392,10 +477,7 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
             ],
           ),
         ),
@@ -534,7 +616,10 @@ class _AvailableRidesScreenState extends State<AvailableRidesScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: kPrimary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),

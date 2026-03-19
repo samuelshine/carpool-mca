@@ -4,10 +4,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../services/rides_api_service.dart';
+import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 
 class VerificationScreen extends StatefulWidget {
-  const VerificationScreen({super.key});
+  final bool demoMode;
+
+  const VerificationScreen({super.key, this.demoMode = false});
 
   @override
   State<VerificationScreen> createState() => _VerificationScreenState();
@@ -32,9 +35,21 @@ class _VerificationScreenState extends State<VerificationScreen> {
       _errorMessage = null;
     });
 
-    final profileRes = await RidesApiService.getMyProfile();
-    final identityRes = await RidesApiService.getIdentityStatus();
-    final driverRes = await RidesApiService.getDriverVerificationStatus();
+    if (widget.demoMode) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _profile = DemoModeData.demoProfile();
+        _identityStatus = DemoModeData.demoIdentityStatus();
+        _driverStatus = DemoModeData.demoDriverVerificationStatus();
+      });
+      return;
+    }
+
+    final profileRes = await UserApiService.getMyProfile();
+    final identityRes = await VerificationApiService.getIdentityStatus();
+    final driverRes =
+        await VerificationApiService.getDriverVerificationStatus();
 
     if (!mounted) return;
 
@@ -63,6 +78,17 @@ class _VerificationScreenState extends State<VerificationScreen> {
   bool get _isIdentityVerified => _profile?['is_identity_verified'] == true;
   bool get _isDriverVerified => _profile?['is_driver_verified'] == true;
 
+  void _showDemoNote() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Demo Mode shows approved verification states without submitting live documents.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,6 +108,23 @@ class _VerificationScreenState extends State<VerificationScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (widget.demoMode) ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: const Text(
+                        'These verification states are seeded for demos so you can explain the onboarding and approval journey safely.',
+                        style: TextStyle(color: Colors.black54, height: 1.4),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   _buildOverviewCard(),
                   const SizedBox(height: 16),
                   _buildStatusCard(
@@ -91,20 +134,22 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     icon: Icons.school_outlined,
                     color: Colors.orange,
                     statusLabel: _combinedStudentStatusLabel(),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CollegeVerificationScreen(
-                            initialEmail: _profile?['email']?.toString(),
-                            isEmailVerified: _isEmailVerified,
-                            identityVerified: _isIdentityVerified,
-                            initialIdentityStatus: _identityStatus,
-                          ),
-                        ),
-                      );
-                      _loadVerificationState();
-                    },
+                    onTap: widget.demoMode
+                        ? _showDemoNote
+                        : () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => CollegeVerificationScreen(
+                                  initialEmail: _profile?['email']?.toString(),
+                                  isEmailVerified: _isEmailVerified,
+                                  identityVerified: _isIdentityVerified,
+                                  initialIdentityStatus: _identityStatus,
+                                ),
+                              ),
+                            );
+                            _loadVerificationState();
+                          },
                   ),
                   const SizedBox(height: 12),
                   _buildStatusCard(
@@ -113,20 +158,24 @@ class _VerificationScreenState extends State<VerificationScreen> {
                         'Required before you can add backend vehicles or create rides.',
                     icon: Icons.badge_outlined,
                     color: Colors.blue,
-                    statusLabel: _statusLabel(_driverStatus['status']?.toString()),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LicenseVerificationScreen(
-                            identityVerified: _isIdentityVerified,
-                            driverVerified: _isDriverVerified,
-                            initialDriverStatus: _driverStatus,
-                          ),
-                        ),
-                      );
-                      _loadVerificationState();
-                    },
+                    statusLabel: _statusLabel(
+                      _driverStatus['status']?.toString(),
+                    ),
+                    onTap: widget.demoMode
+                        ? _showDemoNote
+                        : () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => LicenseVerificationScreen(
+                                  identityVerified: _isIdentityVerified,
+                                  driverVerified: _isDriverVerified,
+                                  initialDriverStatus: _driverStatus,
+                                ),
+                              ),
+                            );
+                            _loadVerificationState();
+                          },
                   ),
                   const SizedBox(height: 16),
                   _buildUnlocksCard(),
@@ -157,7 +206,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
             runSpacing: 8,
             children: [
               _VerificationChip(
-                label: _isEmailVerified ? 'Email verified' : 'Email not verified',
+                label: _isEmailVerified
+                    ? 'Email verified'
+                    : 'Email not verified',
                 color: _isEmailVerified ? Colors.green : Colors.orange,
               ),
               _VerificationChip(
@@ -416,7 +467,9 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
     }
 
     setState(() => _isSendingOtp = true);
-    final res = await RidesApiService.sendEmailOtp(_emailController.text.trim());
+    final res = await VerificationApiService.sendEmailOtp(
+      _emailController.text.trim(),
+    );
 
     if (!mounted) return;
     setState(() => _isSendingOtp = false);
@@ -446,7 +499,7 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
     }
 
     setState(() => _isVerifyingOtp = true);
-    final res = await RidesApiService.verifyEmailOtp(
+    final res = await VerificationApiService.verifyEmailOtp(
       sessionToken,
       _otpController.text.trim(),
     );
@@ -488,7 +541,7 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
     }
 
     setState(() => _isSubmittingIdentity = true);
-    final res = await RidesApiService.submitIdentityVerification(
+    final res = await VerificationApiService.submitIdentityVerification(
       documentUrl: await _fileToDataUrl(_identityImage!),
       collegeIdNumber: _collegeIdController.text.trim().isEmpty
           ? null
@@ -516,18 +569,22 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
   }
 
   Future<void> _refreshIdentityStatus() async {
-    final res = await RidesApiService.getIdentityStatus();
+    final res = await VerificationApiService.getIdentityStatus();
     if (!mounted || !res.success || res.data is! Map<String, dynamic>) return;
     setState(() {
-      _identityStatus = Map<String, dynamic>.from(res.data as Map<String, dynamic>);
+      _identityStatus = Map<String, dynamic>.from(
+        res.data as Map<String, dynamic>,
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final identityStatus = _identityStatus['status']?.toString() ?? 'not_submitted';
+    final identityStatus =
+        _identityStatus['status']?.toString() ?? 'not_submitted';
     final canSubmitIdentity =
-        _isEmailVerified && (identityStatus == 'not_submitted' || identityStatus == 'rejected');
+        _isEmailVerified &&
+        (identityStatus == 'not_submitted' || identityStatus == 'rejected');
 
     return Scaffold(
       appBar: AppBar(title: const Text('College Verification')),
@@ -538,7 +595,9 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
             title: 'Student verification',
             chips: [
               _StatusChipData(
-                label: _isEmailVerified ? 'Email verified' : 'Email not verified',
+                label: _isEmailVerified
+                    ? 'Email verified'
+                    : 'Email not verified',
                 color: _isEmailVerified ? Colors.green : Colors.orange,
               ),
               _StatusChipData(
@@ -594,7 +653,9 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
                   ),
                 ] else
                   ElevatedButton.icon(
-                    onPressed: _isEmailVerified || _isSendingOtp ? null : _sendOtp,
+                    onPressed: _isEmailVerified || _isSendingOtp
+                        ? null
+                        : _sendOtp,
                     icon: _isSendingOtp
                         ? const SizedBox(
                             width: 16,
@@ -648,14 +709,12 @@ class _CollegeVerificationScreenState extends State<CollegeVerificationScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.upload_file_outlined),
-                    label: Text(
-                      switch (identityStatus) {
-                        'verified' => 'Identity already verified',
-                        'submitted' => 'Identity review pending',
-                        'rejected' => 'Resubmit identity',
-                        _ => 'Submit identity for review',
-                      },
-                    ),
+                    label: Text(switch (identityStatus) {
+                      'verified' => 'Identity already verified',
+                      'submitted' => 'Identity review pending',
+                      'rejected' => 'Resubmit identity',
+                      _ => 'Submit identity for review',
+                    }),
                   ),
                 ],
               ),
@@ -742,7 +801,7 @@ class _LicenseVerificationScreenState extends State<LicenseVerificationScreen> {
     }
 
     setState(() => _isSubmitting = true);
-    final res = await RidesApiService.submitDriverVerification(
+    final res = await VerificationApiService.submitDriverVerification(
       licenseDocumentUrl: await _fileToDataUrl(_licenseImage!),
       licenseNumber: _licenseNoController.text.trim(),
     );
@@ -768,10 +827,12 @@ class _LicenseVerificationScreenState extends State<LicenseVerificationScreen> {
   }
 
   Future<void> _refreshDriverStatus() async {
-    final res = await RidesApiService.getDriverVerificationStatus();
+    final res = await VerificationApiService.getDriverVerificationStatus();
     if (!mounted || !res.success || res.data is! Map<String, dynamic>) return;
     setState(() {
-      _driverStatus = Map<String, dynamic>.from(res.data as Map<String, dynamic>);
+      _driverStatus = Map<String, dynamic>.from(
+        res.data as Map<String, dynamic>,
+      );
     });
   }
 
@@ -779,7 +840,8 @@ class _LicenseVerificationScreenState extends State<LicenseVerificationScreen> {
   Widget build(BuildContext context) {
     final status = _driverStatus['status']?.toString() ?? 'not_submitted';
     final canSubmit =
-        widget.identityVerified && (status == 'not_submitted' || status == 'rejected');
+        widget.identityVerified &&
+        (status == 'not_submitted' || status == 'rejected');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Driver Verification')),
@@ -864,14 +926,12 @@ class _LicenseVerificationScreenState extends State<LicenseVerificationScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.verified_user_outlined),
-                    label: Text(
-                      switch (status) {
-                        'verified' => 'Driver already verified',
-                        'submitted' => 'Driver review pending',
-                        'rejected' => 'Resubmit licence',
-                        _ => 'Submit licence for review',
-                      },
-                    ),
+                    label: Text(switch (status) {
+                      'verified' => 'Driver already verified',
+                      'submitted' => 'Driver review pending',
+                      'rejected' => 'Resubmit licence',
+                      _ => 'Submit licence for review',
+                    }),
                   ),
                 ],
               ),
@@ -926,7 +986,10 @@ class _StatusSummaryCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: chips
-                .map((chip) => _VerificationChip(label: chip.label, color: chip.color))
+                .map(
+                  (chip) =>
+                      _VerificationChip(label: chip.label, color: chip.color),
+                )
                 .toList(),
           ),
           const SizedBox(height: 12),
@@ -956,7 +1019,11 @@ class _VerificationChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -996,7 +1063,11 @@ class _ImagePickerBox extends StatelessWidget {
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_a_photo_outlined, size: 40, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 40,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 8),
                   Text(hint, style: TextStyle(color: Colors.grey.shade600)),
                 ],

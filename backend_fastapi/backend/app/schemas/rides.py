@@ -65,6 +65,7 @@ class RideHistoryItemRead(BaseModel):
     """Current-user ride history item across driver, rider, and request states."""
     ride_id: UUID
     user_role: str
+    driver_id: Optional[UUID] = None
     history_state: str
     status_label: str
     ride_status: Optional[RideStatusEnum] = None

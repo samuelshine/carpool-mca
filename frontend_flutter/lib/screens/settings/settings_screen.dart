@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import '../profile/user_profile.dart';
 import '../activity/ride_details_screen.dart';
 import '../rides/activity_history_screen.dart';
+import 'safety_center_screen.dart';
 import 'preferences_screen.dart';
 import '../../main.dart';
 import '../auth/login.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
+import 'demo_center_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -20,12 +23,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String contactNumber = '';
   String orgEmail = '';
   String userId = '';
+  String community = '';
+  String gender = 'other';
   double? averageRating;
   int totalRatings = 0;
   bool _isEmailVerified = false;
   bool _isIdentityVerified = false;
   bool _isDriverVerified = false;
   bool _isLoadingProfile = true;
+  bool _isDemoMode = false;
 
   // --- TOGGLE STATE ---
   bool isRiderMode = true; // true = Rider, false = Driver
@@ -33,7 +39,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _isDemoMode = demoModeNotifier.isEnabled;
+    demoModeNotifier.addListener(_handleDemoModeChanged);
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    demoModeNotifier.removeListener(_handleDemoModeChanged);
+    super.dispose();
+  }
+
+  void _handleDemoModeChanged() {
+    if (!mounted) return;
+    setState(() => _isDemoMode = demoModeNotifier.isEnabled);
   }
 
   Future<void> _loadProfile() async {
@@ -47,6 +66,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         contactNumber = data['phone_number'] ?? '';
         orgEmail = data['email'] ?? '';
         userId = uid;
+        community = data['community'] ?? '';
+        gender = data['gender'] ?? 'other';
         _isEmailVerified = data['is_email_verified'] == true;
         _isIdentityVerified = data['is_identity_verified'] == true;
         _isDriverVerified = data['is_driver_verified'] == true;
@@ -202,7 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // --- EDIT BUTTON ---
                   InkWell(
                     onTap: () async {
-                      final result = await Navigator.push(
+                      final changed = await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (context) => EditProfileScreen(
@@ -210,18 +231,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               'name': name,
                               'contact': contactNumber,
                               'orgEmail': orgEmail,
-                              'personalEmail': '',
+                              'community': community,
+                              'gender': gender,
                             },
                           ),
                         ),
                       );
 
-                      if (result != null) {
-                        setState(() {
-                          name = result['name'] ?? name;
-                          contactNumber = result['contact'] ?? contactNumber;
-                          orgEmail = result['orgEmail'] ?? orgEmail;
-                        });
+                      if (changed == true) {
+                        await _loadProfile();
                       }
                     },
                     borderRadius: BorderRadius.circular(20),
@@ -314,6 +332,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             const SizedBox(height: 24),
+
+            if (_isDemoMode) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: primaryGreen.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.smart_display, color: primaryGreen),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Demo Mode is active',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Use Demo Center to launch seeded rider, driver, safety, and trust walkthroughs.',
+                            style: TextStyle(color: textGrey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DemoCenterScreen(),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        'Open',
+                        style: TextStyle(
+                          color: primaryGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // --- ACTIVITY SECTION ---
             _buildSectionHeader('ACTIVITY'),
@@ -416,8 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) =>
-                                const ActivityHistoryScreen(),
+                            builder: (context) => const ActivityHistoryScreen(),
                           ),
                         );
                       },
@@ -509,6 +587,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     iconBg: Colors.orange.withOpacity(0.1),
                     title: 'Report User or Driver',
                     subtitle: 'Flag inappropriate behavior',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ReportUserScreen(),
+                        ),
+                      );
+                    },
                   ),
                   const Divider(height: 1, indent: 60),
                   _buildListTile(
@@ -517,6 +603,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     iconBg: Colors.red.withOpacity(0.1),
                     title: 'Safety Center',
                     subtitle: 'Emergency contacts & SOS',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SafetyCenterScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -755,43 +849,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Color? iconBg,
     required String title,
     String? subtitle,
+    VoidCallback? onTap,
   }) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconBg ?? Colors.grey[100],
-              shape: BoxShape.circle,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconBg ?? Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle,
-                    style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          Icon(Icons.chevron_right, color: Colors.grey[400]),
-        ],
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
       ),
     );
   }

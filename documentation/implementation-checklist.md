@@ -2,7 +2,7 @@
 
 This file turns the current product and implementation audit into a working backlog that can be revisited and updated over time.
 
-Last reviewed: 2026-03-17
+Last reviewed: 2026-03-19
 
 ## How to use this file
 
@@ -84,7 +84,7 @@ Implementation note:
 References:
 
 - `frontend_flutter/lib/screens/profile/verification_screen.dart`
-- `frontend_flutter/lib/services/rides_api_service.dart`
+- `frontend_flutter/lib/services/api_service.dart`
 - `backend_fastapi/backend/app/routers/verification.py`
 
 ### 5. Real ride-live state for actual rides
@@ -114,10 +114,17 @@ These items improve trust, safety, and data consistency once the core ride flow 
 
 ### 6. Backend-backed profile and vehicles
 
-- [ ] Load profile data from `/users/me` in the main profile screen.
-- [ ] Persist profile edits through `PUT /users/me`.
-- [ ] Replace local vehicle-only state with `/vehicles/` CRUD-backed state.
-- [ ] Align vehicle UI fields with the current backend schema or extend the backend schema intentionally.
+- [x] Load profile data from `/users/me` in the main profile screen.
+- [x] Persist profile edits through `PUT /users/me`.
+- [x] Replace local vehicle-only state with `/vehicles/` CRUD-backed state.
+- [x] Align vehicle UI fields with the current backend schema or extend the backend schema intentionally.
+
+Implementation note:
+
+- `UserProfileScreen` now loads its primary account state from `/users/me` and refreshes after profile or verification updates.
+- `EditProfileScreen` now saves supported fields through `PUT /users/me` instead of returning local-only form state.
+- Vehicle listing, add, edit, and delete now use `/vehicles/`, `/vehicles/{vehicle_id}`, and `/vehicles/{vehicle_id}` delete operations instead of local in-memory data.
+- The profile vehicle form is now intentionally aligned to the current backend schema: `vehicle_type` and `vehicle_number`.
 
 References:
 
@@ -128,9 +135,17 @@ References:
 
 ### 7. Saved addresses
 
-- [ ] Decide whether saved places should live in backend persistence or remain local-only by product choice.
-- [ ] If backend-backed, implement real address CRUD beyond the current placeholder.
-- [ ] Connect the preferences and location-search flows to the same saved-address source.
+- [x] Decide whether saved places should live in backend persistence or remain local-only by product choice.
+- [x] If backend-backed, implement real address CRUD beyond the current placeholder.
+  For the current product choice this is intentionally skipped, because saved places remain local-only.
+- [x] Connect the preferences and location-search flows to the same saved-address source.
+
+Implementation note:
+
+- Product decision: saved addresses remain local-only for now and do not use the backend `/addresses/` placeholder.
+- `LocationService` now stores a shared local saved-address list in `SharedPreferences`, including a primary address used by route and driver flows.
+- `PreferencesScreen` and `LocationSearchScreen` now read and write the same local saved-address source instead of maintaining separate UI-only state.
+- Route search can now choose from multiple locally saved addresses, while preferences can add, edit, and delete the same local entries.
 
 References:
 
@@ -140,10 +155,17 @@ References:
 
 ### 8. Safety center and reporting
 
-- [ ] Turn “Safety Center” into a real screen.
-- [ ] Wire emergency contacts CRUD into the app.
-- [ ] Wire reporting flow for riders and drivers using `/reports/`.
-- [ ] Make SOS history and emergency actions visible in the user-facing product.
+- [x] Turn “Safety Center” into a real screen.
+- [x] Wire emergency contacts CRUD into the app.
+- [x] Wire reporting flow for riders and drivers using `/reports/`.
+- [x] Make SOS history and emergency actions visible in the user-facing product.
+
+Implementation note:
+
+- `SafetyCenterScreen` is now a real user-facing screen from settings with emergency actions, emergency contact management, SOS history, and recent reporting history.
+- Emergency contacts now use the backend `/emergency-contacts/` CRUD surfaces for list, add, and delete.
+- Reporting now uses a ride-aware flow via `/reports/`, with drivers able to report participants and riders able to report drivers.
+- SOS history is visible from `/sos/active`, and active rides can now trigger SOS directly from the safety center using the device’s current location.
 
 References:
 
@@ -155,9 +177,17 @@ References:
 
 ### 9. Post-ride ratings in the real lifecycle
 
-- [ ] Trigger the rating screen only from completed rides.
-- [ ] Make sure the user can rate the right counterparty for the ride.
-- [ ] Show rating history or summary where it helps trust decisions.
+- [x] Trigger the rating screen only from completed rides.
+- [x] Make sure the user can rate the right counterparty for the ride.
+- [x] Show rating history or summary where it helps trust decisions.
+
+Implementation note:
+
+- Completed ride cards in `ActivityHistoryScreen` are now the main lifecycle entry point for ratings.
+- The old direct rating path from `RideLiveScreen` has been removed so the lifecycle stays canonical.
+- Passengers can rate the completed ride’s driver directly, while drivers can open a chooser of confirmed ride participants and rate the correct rider.
+- `RateRideScreen` now loads the target user’s rating summary and detects if the current user has already submitted a rating for that ride.
+- Backend rating submission now rejects ratings for non-completed rides and enforces valid counterparties: passengers can rate only the driver, and drivers can rate only confirmed passengers from that ride.
 
 References:
 
@@ -167,9 +197,16 @@ References:
 
 ### 10. Admin SOS resolution
 
-- [ ] Add backend support for resolving or closing SOS alerts.
-- [ ] Add an admin action in the web dashboard for triaging SOS alerts.
-- [ ] Distinguish open versus resolved alerts in dashboard stats and tables.
+- [x] Add backend support for resolving or closing SOS alerts.
+- [x] Add an admin action in the web dashboard for triaging SOS alerts.
+- [x] Distinguish open versus resolved alerts in dashboard stats and tables.
+
+Implementation note:
+
+- SOS alerts now have lifecycle state in the backend with `open`, `resolved`, and `closed` statuses plus admin resolution metadata.
+- Admin APIs now support filtered SOS listing and explicit admin actions through `/admin/sos`, `/admin/sos/{alert_id}/status`, `/admin/sos/{alert_id}/resolve`, and `/admin/sos/{alert_id}/close`.
+- The admin dashboard has been reworked into a more robust operations console with dashboard previews, an SOS incident desk, alert selection, notes, and resolve/close actions.
+- Dashboard and SOS stats now distinguish `open`, `resolved`, `closed`, and `total_triggered` counts instead of showing SOS as one undifferentiated total.
 
 References:
 
@@ -183,9 +220,16 @@ These items are lower risk but help with maintainability, operational readiness,
 
 ### 11. Admin detail and operations polish
 
-- [ ] Use the existing admin user detail endpoint in the web UI.
-- [ ] Add deeper inspection actions for support and moderation workflows.
-- [ ] Replace hardcoded localhost assumptions with environment-based configuration.
+- [x] Use the existing admin user detail endpoint in the web UI.
+- [x] Add deeper inspection actions for support and moderation workflows.
+- [x] Replace hardcoded localhost assumptions with environment-based configuration.
+
+Implementation note:
+
+- The admin web UI now uses `GET /admin/users/{user_id}` through a reusable support drawer that can be opened from the users table, verification review cards, and the SOS incident desk.
+- The admin user detail payload is now enriched with verification records, vehicles, recent rides and requests, recent reports, SOS history, and moderation summary counts so support/admins can inspect a user without leaving context.
+- Support and moderation workflows now include direct “Inspect user” actions from the main operational surfaces instead of relying on the users table alone.
+- The admin web app no longer assumes a hardcoded localhost API base. It now resolves configuration from `window.UNIRIDE_API_BASE`, a `meta[name="uniride-api-base"]` tag, local storage override, or same-origin hosting before falling back to local development.
 
 References:
 
@@ -206,14 +250,21 @@ References:
 
 ### 13. API layer cleanup
 
-- [ ] Consolidate overlapping Flutter service layers.
-- [ ] Remove wrappers whose payloads drift from the backend contract.
-- [ ] Keep one clear source of truth for mobile API usage.
+- [x] Consolidate overlapping Flutter service layers.
+- [x] Remove wrappers whose payloads drift from the backend contract.
+- [x] Keep one clear source of truth for mobile API usage.
+
+Implementation note:
+
+- `api_service.dart` is now the single shared source of truth for mobile API usage across auth, rides, verification, profile, ratings, safety, and support flows.
+- The old `rides_api_service.dart` wrapper has been removed after its remaining verification calls were moved into `VerificationApiService`.
+- Drifted wrappers were removed rather than preserved behind compatibility layers, including old payload shapes for ratings, emergency contacts, vehicles, and SOS that no longer matched the backend contract.
+- The verification screen now imports the consolidated API layer directly and uses `UserApiService` plus `VerificationApiService`.
 
 References:
 
 - `frontend_flutter/lib/services/api_service.dart`
-- `frontend_flutter/lib/services/rides_api_service.dart`
+- `frontend_flutter/lib/screens/profile/verification_screen.dart`
 
 ## Suggested delivery order
 
@@ -232,7 +283,7 @@ The current audit found that the repository already contains most of the documen
 - verification is now largely backend-backed for email, identity, and driver licence flows
 - history uses the wrong backend source
 - live tracking still leans heavily on simulation
-- profile, vehicles, and saved addresses are still not consistently persisted
+- profile is backend-persisted, vehicles are backend-persisted, and saved addresses are now intentionally local-persisted
 - support and safety surfaces exist in UI but are not fully wired end to end
 
 This file should be updated whenever those conclusions change.

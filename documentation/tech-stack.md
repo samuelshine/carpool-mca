@@ -1,5 +1,7 @@
 # Tech Stack
 
+Last reviewed: 2026-03-19
+
 ## Product surfaces
 
 ### Backend
@@ -86,7 +88,7 @@
 ### Non-persistent or semi-persistent runtime state
 
 - Driver live location in backend tracking router is stored in an in-memory Python dictionary, not in Redis or the database
-- Some Flutter user profile and vehicle screens still use local UI state rather than backend-backed persistence
+- Demo-mode ride simulation still exists on the Flutter side for explicit non-real-ride scenarios
 
 ## Key runtime configuration
 
@@ -116,7 +118,7 @@
 ## Notable implementation characteristics
 
 - The backend is structured like a real production API, with typed schemas, async DB sessions, and service abstractions.
-- The Flutter client is a hybrid of production intent and prototype UX.
+- The Flutter client is still a hybrid of production intent and prototype UX, but the main booking, create-ride, history, verification, and real live-ride paths are now backend-oriented.
 - The admin app is intentionally minimal and tightly coupled to the backend admin routes.
 - Geospatial data is handled seriously in the backend schema, but some API responses still return placeholder location payloads in specific ride-detail responses.
-
+- The mobile client now uses a single shared API surface in `frontend_flutter/lib/services/api_service.dart`.

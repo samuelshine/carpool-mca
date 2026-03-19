@@ -4,8 +4,10 @@ import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../profile/user_profile.dart';
 import '../settings/settings_screen.dart';
+import '../settings/demo_center_screen.dart';
 import '../driver/driver_dashboard_screen.dart';
 import '../rides/activity_history_screen.dart';
+import '../../services/demo_mode_service.dart';
 import '../../services/location_service.dart';
 import 'location_search_screen.dart';
 
@@ -21,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedQuickDestination = 'Campus';
   LatLng? _currentLocation;
   bool _isLocating = true;
+  bool _isDemoMode = false;
   final MapController _mapController = MapController();
 
   final List<String> _quickDestinations = ['Campus', 'Home', 'Library'];
@@ -31,10 +34,34 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _isDemoMode = demoModeNotifier.isEnabled;
+    demoModeNotifier.addListener(_handleDemoModeChanged);
+    _loadCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    demoModeNotifier.removeListener(_handleDemoModeChanged);
+    super.dispose();
+  }
+
+  void _handleDemoModeChanged() {
+    if (!mounted) return;
+    setState(() => _isDemoMode = demoModeNotifier.isEnabled);
     _loadCurrentLocation();
   }
 
   Future<void> _loadCurrentLocation() async {
+    if (_isDemoMode) {
+      if (!mounted) return;
+      setState(() {
+        _currentLocation = DemoModeData.riderPickupLatLng;
+        _isLocating = false;
+      });
+      _mapController.move(DemoModeData.riderPickupLatLng, 15.0);
+      return;
+    }
+
     try {
       final loc = await LocationService.getCurrentLocation();
       if (mounted) {
@@ -66,6 +93,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       // Search bar and profile
                       _buildSearchBar(),
+
+                      if (_isDemoMode) ...[
+                        const SizedBox(height: 16),
+                        _buildDemoBanner(),
+                      ],
 
                       const SizedBox(height: 16),
 
@@ -206,6 +238,55 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildDemoBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kPrimary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: kPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.smart_display, color: kPrimary),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Demo Mode is on',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Launch scripted rider and driver walkthroughs without depending on real movement or live ride state.',
+                  style: TextStyle(color: kMuted, fontSize: 12, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DemoCenterScreen()),
+              );
+            },
+            child: const Text('Open'),
+          ),
+        ],
+      ),
     );
   }
 

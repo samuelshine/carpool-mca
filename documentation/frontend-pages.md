@@ -2,6 +2,8 @@
 
 This file maps the user-facing screens and admin UI surfaces that currently exist in the repository.
 
+Last reviewed: 2026-03-19
+
 ## Flutter app page map
 
 ## App entry and auth
@@ -108,9 +110,14 @@ Purpose:
 - collects pickup location and destination campus
 - supports:
   - current GPS location
-  - saved address
+  - local saved addresses
   - forward geocoded address search
   - pin-drop selection
+
+Important note:
+
+- route search now uses the shared local saved-address store from `LocationService`
+- users can save the current pickup locally and choose among multiple saved addresses
 
 Destination model:
 
@@ -176,6 +183,8 @@ Important note:
   location, updates ride status, and verifies pickup OTPs against the backend
 - real rides no longer rely on the older client-side simulated OTP/live-state
   path
+- post-ride rating no longer launches from this screen; completed rides are rated
+  from `ActivityHistoryScreen`
 - simulation remains available only when `demoMode` is explicitly enabled
 
 ## Driver pages
@@ -243,11 +252,13 @@ Current data sources:
 
 - name/phone/email and verification flags from `/users/me` when available
 - local fallback from `SharedPreferences` if the backend profile request fails
-- vehicles are mostly local page state
+- vehicles from `GET /vehicles/`
 
 Important note:
 
-- the profile vehicle management UI is richer than the backend vehicle schema and is not fully synced to backend persistence
+- profile editing now saves supported fields back through `PUT /users/me`
+- vehicle add, edit, and delete actions are backend-backed
+- the vehicle form is intentionally aligned to the current backend schema
 - opening the vehicle form is now locked until driver verification is approved
 
 ### `EditProfileScreen`
@@ -260,7 +271,8 @@ Purpose:
 
 Important note:
 
-- updates are mostly fed back to local UI state unless separately wired to backend elsewhere
+- saves supported fields through `PUT /users/me`
+- read-only account details like phone and verified email are shown for context but not edited here
 
 ### `AddVehicleScreen`
 
@@ -272,7 +284,8 @@ Purpose:
 
 Important note:
 
-- currently behaves as local UI form state rather than a strict wrapper around `/vehicles/`
+- uses `POST /vehicles/` for create and `PUT /vehicles/{vehicle_id}` for edits
+- intentionally limited to backend-supported fields: vehicle type and registration number
 
 ### `VerificationScreen`
 
@@ -368,7 +381,9 @@ Purpose:
 
 Observed role:
 
-- intended to plug into ratings flow after ride completion
+- used from completed ride flows via `ActivityHistoryScreen`
+- shows trust context using the target user’s rating summary
+- prevents duplicate submission for the same rater/rated user/ride combination
 
 ## Settings and preferences pages
 
@@ -383,7 +398,44 @@ Purpose:
 
 Important note:
 
-- this screen mixes real profile/rating calls with prototype navigation blocks and placeholder support actions
+- this screen mixes real profile/rating calls with some lighter support placeholders
+- `Safety Center` and `Report User or Driver` now navigate to real safety/reporting flows
+
+### `SafetyCenterScreen`
+
+File: `frontend_flutter/lib/screens/settings/safety_center_screen.dart`
+
+Purpose:
+
+- central user-facing safety hub
+- manages emergency contacts
+- shows SOS history
+- allows SOS triggering for active rides
+- links into ride-aware reporting
+
+Integrations:
+
+- `GET /emergency-contacts/`
+- `POST /emergency-contacts/`
+- `DELETE /emergency-contacts/{contact_id}`
+- `GET /sos/active`
+- `POST /sos/trigger`
+- `GET /rides/history`
+- `GET /reports/mine`
+
+### `ReportUserScreen`
+
+File: `frontend_flutter/lib/screens/settings/safety_center_screen.dart`
+
+Purpose:
+
+- report a driver or passenger in a specific ride context
+
+Integrations:
+
+- `GET /rides/history`
+- `GET /rides/{ride_id}/participants`
+- `POST /reports/`
 
 ### `PreferencesScreen`
 
@@ -400,7 +452,8 @@ Integrations:
 
 Important note:
 
-- saved places here are UI-managed and not backed by the backend `saved_addresses` table yet
+- saved places here are intentionally local-only for now
+- this screen now shares the same `LocationService` saved-address store used by `LocationSearchScreen`
 
 ## Admin web UI map
 
@@ -432,10 +485,14 @@ API usage:
 Purpose:
 
 - stats cards for users, verifications, rides, and SOS
+- dashboard previews for pending verification work and open SOS incidents
 
 API usage:
 
 - `/admin/stats`
+- `/admin/sos?status=open&page_size=5`
+- `/admin/verifications/identity/pending`
+- `/admin/verifications/driver/pending`
 
 ### Users section
 
@@ -444,12 +501,14 @@ Purpose:
 - search users
 - view verification/activation state
 - activate/deactivate accounts
+- inspect deeper support context for a selected user
 
 API usage:
 
 - `/admin/users`
 - `/admin/users/{user_id}/activate`
 - `/admin/users/{user_id}/deactivate`
+- `/admin/users/{user_id}`
 
 ### Verifications section
 
@@ -457,6 +516,7 @@ Purpose:
 
 - review pending identity and driver verification requests
 - approve or reject with optional notes
+- jump into the inspected user context when a reviewer needs deeper support history
 
 API usage:
 
@@ -471,17 +531,26 @@ API usage:
 
 Purpose:
 
-- table of active SOS alerts
-- map links to reported coordinates
+- SOS incident desk for triage
+- filter alerts by `open`, `resolved`, `closed`, or `all`
+- inspect rider, ride, and location context for a selected alert
+- resolve or close alerts with admin notes
+- distinguish open versus handled alerts in stats and the incident queue
+- open the same user inspection drawer directly from an incident
 
 API usage:
 
+- `/admin/sos`
 - `/admin/sos/active`
+- `/admin/sos/{alert_id}/status`
+- `/admin/sos/{alert_id}/resolve`
+- `/admin/sos/{alert_id}/close`
+- `/admin/stats`
 
 ## Frontend implementation notes for future work
 
 - There is a clear split between production-intent pages and prototype/demo pages.
-- Profile vehicle management still needs backend alignment if it is meant to become a canonical product flow.
-- The admin UI is functional but intentionally simple and hardcoded to localhost unless changed manually.
+- Profile vehicle management is now aligned to the current backend schema, but a future vehicle-verification feature would still require new backend and admin flows.
+- The admin UI now supports environment-based API configuration through window config, meta tag config, local override, or same-origin hosting.
 - History navigation is now consolidated to the backend-backed
   `ActivityHistoryScreen`.

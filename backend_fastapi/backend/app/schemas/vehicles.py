@@ -10,6 +10,10 @@ class VehicleBase(BaseModel):
 class VehicleCreate(VehicleBase):
     pass  # user_id inferred from auth token
 
+class VehicleUpdate(BaseModel):
+    vehicle_type: VehicleTypeEnum | None = None
+    vehicle_number: str | None = None
+
 class VehicleRead(VehicleBase):
     vehicle_id: UUID
     user_id: UUID

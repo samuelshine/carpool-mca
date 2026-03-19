@@ -3,10 +3,13 @@ import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../home/pin_drop_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 import '../../services/location_service.dart';
 
 class CreateRideScreen extends StatefulWidget {
-  const CreateRideScreen({super.key});
+  final bool demoMode;
+
+  const CreateRideScreen({super.key, this.demoMode = false});
 
   @override
   State<CreateRideScreen> createState() => _CreateRideScreenState();
@@ -85,6 +88,20 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
       _loadError = null;
     });
 
+    if (widget.demoMode) {
+      final vehicles = DemoModeData.demoVehicles();
+      final profile = DemoModeData.demoDriverProfile();
+      setState(() {
+        _isLoading = false;
+        _isDriverVerified = true;
+        _vehicles = vehicles;
+        _selectedVehicleId = profile['vehicle_id']?.toString();
+        _seatLimit = (profile['daily_seat_limit'] as num?)?.toInt() ?? 3;
+        _availableSeats = 1;
+      });
+      return;
+    }
+
     final userRes = await UserApiService.getMyProfile();
     final vehiclesRes = await VehicleApiService.getMyVehicles();
     final profileRes = await DriverProfileApiService.getMyDriverProfile();
@@ -145,7 +162,8 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
         .map((vehicle) => vehicle['vehicle_id']?.toString())
         .whereType<String>()
         .toSet();
-    if (selectedVehicleId != null && !knownVehicleIds.contains(selectedVehicleId)) {
+    if (selectedVehicleId != null &&
+        !knownVehicleIds.contains(selectedVehicleId)) {
       selectedVehicleId = vehicles.first['vehicle_id']?.toString();
     }
 
@@ -169,6 +187,16 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
   }
 
   Future<void> _useCurrentLocation() async {
+    if (widget.demoMode) {
+      setState(() {
+        _pickupLatLng = DemoModeData.driverPickupLatLng;
+        _pickupController.text = DemoModeData.driverPickupLabel;
+        _isResolvingPickup = false;
+      });
+      _refreshFareEstimate();
+      return;
+    }
+
     setState(() => _isResolvingPickup = true);
     try {
       final location = await LocationService.getCurrentLocation();
@@ -194,6 +222,15 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
   }
 
   Future<void> _useSavedAddress() async {
+    if (widget.demoMode) {
+      setState(() {
+        _pickupLatLng = DemoModeData.driverPickupLatLng;
+        _pickupController.text = DemoModeData.driverPickupLabel;
+      });
+      _refreshFareEstimate();
+      return;
+    }
+
     final saved = await LocationService.getSavedPickupAddress();
 
     if (!mounted) return;
@@ -274,6 +311,19 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
       if (mounted) {
         setState(() => _estimatedFare = null);
       }
+      return;
+    }
+
+    if (widget.demoMode) {
+      setState(() {
+        _estimatedFare = DemoModeData.estimateFare(
+          start: pickup,
+          end: LatLng(
+            (campus['lat'] as num).toDouble(),
+            (campus['lng'] as num).toDouble(),
+          ),
+        );
+      });
       return;
     }
 
@@ -366,6 +416,22 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
 
     setState(() => _isSubmitting = true);
 
+    if (widget.demoMode) {
+      final createdRide = DemoModeData.buildCreatedDemoRide(
+        pickupAddress: _pickupController.text.trim(),
+        destinationAddress: campus['name'] as String,
+        rideDate: _apiDate(_rideDate),
+        rideTime: _formatTimeOfDay(_rideTime),
+        availableSeats: _availableSeats,
+        estimatedFare: _estimatedFare,
+      );
+
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      Navigator.pop(context, createdRide);
+      return;
+    }
+
     final res = await RideApiService.createRide(
       startLat: _pickupLatLng!.latitude,
       startLng: _pickupLatLng!.longitude,
@@ -431,6 +497,23 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (widget.demoMode) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: kPrimary.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: const Text(
+                      'Demo Mode uses seeded vehicles and returns a local sample ride to the dashboard. Nothing is submitted to the backend from this screen.',
+                      style: TextStyle(color: kMuted, height: 1.4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _buildSectionCard(
                   cardColor,
                   title: 'Vehicle',
@@ -447,7 +530,9 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                     onChanged: (value) {
                       setState(() => _selectedVehicleId = value);
                     },
-                    decoration: _inputDecoration('Choose the vehicle for this ride'),
+                    decoration: _inputDecoration(
+                      'Choose the vehicle for this ride',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -460,13 +545,14 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                       TextField(
                         controller: _pickupController,
                         readOnly: true,
-                        decoration: _inputDecoration(
-                          _isResolvingPickup
-                              ? 'Resolving pickup...'
-                              : 'Set your ride starting point',
-                        ).copyWith(
-                          prefixIcon: const Icon(Icons.near_me_rounded),
-                        ),
+                        decoration:
+                            _inputDecoration(
+                              _isResolvingPickup
+                                  ? 'Resolving pickup...'
+                                  : 'Set your ride starting point',
+                            ).copyWith(
+                              prefixIcon: const Icon(Icons.near_me_rounded),
+                            ),
                       ),
                       const SizedBox(height: 12),
                       Wrap(
@@ -476,7 +562,9 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                           _buildActionChip(
                             label: 'Current location',
                             icon: Icons.my_location,
-                            onTap: _isResolvingPickup ? null : _useCurrentLocation,
+                            onTap: _isResolvingPickup
+                                ? null
+                                : _useCurrentLocation,
                           ),
                           _buildActionChip(
                             label: 'Saved address',
@@ -510,7 +598,9 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                             )
                             .toList(),
                         onChanged: _onCampusChanged,
-                        decoration: _inputDecoration('Select destination campus'),
+                        decoration: _inputDecoration(
+                          'Select destination campus',
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -581,7 +671,10 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                         value: _allowedGender,
                         items: const [
                           DropdownMenuItem(value: 'any', child: Text('Any')),
-                          DropdownMenuItem(value: 'male', child: Text('Male only')),
+                          DropdownMenuItem(
+                            value: 'male',
+                            child: Text('Male only'),
+                          ),
                           DropdownMenuItem(
                             value: 'female',
                             child: Text('Female only'),
@@ -597,9 +690,12 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: _communityController,
-                        decoration: _inputDecoration(
-                          'Optional community preference',
-                        ).copyWith(prefixIcon: const Icon(Icons.groups_rounded)),
+                        decoration:
+                            _inputDecoration(
+                              'Optional community preference',
+                            ).copyWith(
+                              prefixIcon: const Icon(Icons.groups_rounded),
+                            ),
                       ),
                     ],
                   ),
@@ -660,7 +756,11 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.directions_car_outlined, size: 42, color: kMuted),
+              const Icon(
+                Icons.directions_car_outlined,
+                size: 42,
+                color: kMuted,
+              ),
               const SizedBox(height: 12),
               Text(
                 _loadError ?? 'Unable to start ride creation.',
@@ -768,10 +868,7 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
       ),

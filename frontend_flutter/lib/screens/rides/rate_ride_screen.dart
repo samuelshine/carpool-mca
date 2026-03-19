@@ -8,6 +8,7 @@ class RateRideScreen extends StatefulWidget {
   final String ratedUserId;
   final String ratedUserName;
   final bool isDriver; // true = rating the driver, false = rating a rider
+  final bool demoMode;
 
   const RateRideScreen({
     super.key,
@@ -15,6 +16,7 @@ class RateRideScreen extends StatefulWidget {
     required this.ratedUserId,
     required this.ratedUserName,
     this.isDriver = true,
+    this.demoMode = false,
   });
 
   @override
@@ -25,6 +27,17 @@ class _RateRideScreenState extends State<RateRideScreen> {
   int _rating = 0;
   final TextEditingController _commentController = TextEditingController();
   bool _isSubmitting = false;
+  bool _isLoadingSummary = true;
+  bool _hasAlreadyRated = false;
+  String? _loadError;
+  double? _averageRating;
+  int _totalRatings = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRatingContext();
+  }
 
   @override
   void dispose() {
@@ -32,7 +45,84 @@ class _RateRideScreenState extends State<RateRideScreen> {
     super.dispose();
   }
 
+  Future<void> _loadRatingContext() async {
+    setState(() {
+      _isLoadingSummary = true;
+      _loadError = null;
+    });
+
+    if (widget.demoMode) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSummary = false;
+        _hasAlreadyRated = false;
+        _averageRating = 4.8;
+        _totalRatings = 29;
+      });
+      return;
+    }
+
+    final profileRes = await UserApiService.getMyProfile();
+    final summaryRes = await RatingApiService.getUserRatingSummary(
+      widget.ratedUserId,
+    );
+    final rideRatingsRes = await RatingApiService.getRideRatings(widget.rideId);
+
+    if (!mounted) return;
+
+    String? currentUserId;
+    if (profileRes.success && profileRes.data is Map<String, dynamic>) {
+      currentUserId = (profileRes.data as Map<String, dynamic>)['user_id']
+          ?.toString();
+    }
+
+    bool alreadyRated = false;
+    if (currentUserId != null && rideRatingsRes.data is List) {
+      for (final item in rideRatingsRes.data as List) {
+        if (item is Map<String, dynamic> &&
+            item['rater_id']?.toString() == currentUserId &&
+            item['rated_user_id']?.toString() == widget.ratedUserId) {
+          alreadyRated = true;
+          break;
+        }
+      }
+    }
+
+    setState(() {
+      _isLoadingSummary = false;
+      _hasAlreadyRated = alreadyRated;
+      _averageRating =
+          summaryRes.success && summaryRes.data is Map<String, dynamic>
+          ? (summaryRes.data['average_rating'] as num?)?.toDouble()
+          : null;
+      _totalRatings =
+          summaryRes.success && summaryRes.data is Map<String, dynamic>
+          ? (summaryRes.data['total_ratings'] as num?)?.toInt() ?? 0
+          : 0;
+      _loadError =
+          (!summaryRes.success &&
+              !rideRatingsRes.success &&
+              !profileRes.success)
+          ? (summaryRes.error ?? rideRatingsRes.error ?? profileRes.error)
+          : null;
+    });
+  }
+
   Future<void> _submitRating() async {
+    if (_hasAlreadyRated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('You already submitted a rating for this ride.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -49,6 +139,26 @@ class _RateRideScreenState extends State<RateRideScreen> {
 
     setState(() => _isSubmitting = true);
 
+    if (widget.demoMode) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _hasAlreadyRated = true;
+      });
+      Navigator.of(context).pop(true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Demo rating saved locally for the walkthrough.'),
+          backgroundColor: kPrimary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
     final res = await RatingApiService.submitRating(
       rideId: widget.rideId,
       ratedUserId: widget.ratedUserId,
@@ -61,6 +171,7 @@ class _RateRideScreenState extends State<RateRideScreen> {
     if (mounted) {
       setState(() => _isSubmitting = false);
       if (res.success) {
+        _hasAlreadyRated = true;
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -166,6 +277,92 @@ class _RateRideScreenState extends State<RateRideScreen> {
                       widget.isDriver ? 'Your Driver' : 'Your Rider',
                       style: const TextStyle(color: kMuted, fontSize: 14),
                     ),
+                    const SizedBox(height: 16),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: kCardBorder),
+                      ),
+                      child: _isLoadingSummary
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: kPrimary,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Trust Summary',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _totalRatings > 0
+                                      ? 'Average rating ${_averageRating?.toStringAsFixed(1) ?? '0.0'} from $_totalRatings rides'
+                                      : 'No rating history yet for this user',
+                                  style: const TextStyle(
+                                    color: kMuted,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                if (_hasAlreadyRated) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'You already rated this person for this ride.',
+                                    style: TextStyle(
+                                      color: Colors.orange,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ] else if (_loadError != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _loadError!,
+                                    style: const TextStyle(
+                                      color: Colors.orange,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                    ),
+
+                    if (widget.demoMode) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: kPrimary.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: const Text(
+                          'Demo Mode stores this rating only inside the presentation flow. No backend write happens from this screen.',
+                          style: TextStyle(color: kMuted, fontSize: 12),
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: 32),
 
@@ -253,9 +450,15 @@ class _RateRideScreenState extends State<RateRideScreen> {
                 border: Border(top: BorderSide(color: kCardBorder)),
               ),
               child: AuthButton(
-                label: _isSubmitting ? 'Submitting...' : 'Submit Rating',
+                label: _hasAlreadyRated
+                    ? 'Rating Already Submitted'
+                    : _isSubmitting
+                    ? 'Submitting...'
+                    : 'Submit Rating',
                 icon: Icons.send,
-                onPressed: _isSubmitting ? null : _submitRating,
+                onPressed: _isSubmitting || _hasAlreadyRated
+                    ? null
+                    : _submitRating,
               ),
             ),
           ],

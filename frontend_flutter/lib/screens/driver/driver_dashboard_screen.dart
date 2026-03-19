@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../auth/common_widgets.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 import 'ride_requests_screen.dart';
 import 'create_ride_screen.dart';
 
@@ -14,17 +15,42 @@ class DriverDashboardScreen extends StatefulWidget {
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   bool _isLoading = true;
+  bool _isDemoMode = false;
   Map<String, dynamic>? _driverProfile;
   List<dynamic> _myRides = [];
 
   @override
   void initState() {
     super.initState();
+    _isDemoMode = demoModeNotifier.isEnabled;
+    demoModeNotifier.addListener(_handleDemoModeChanged);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    demoModeNotifier.removeListener(_handleDemoModeChanged);
+    super.dispose();
+  }
+
+  void _handleDemoModeChanged() {
+    if (!mounted) return;
+    setState(() => _isDemoMode = demoModeNotifier.isEnabled);
     _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+
+    if (_isDemoMode) {
+      if (!mounted) return;
+      setState(() {
+        _driverProfile = DemoModeData.demoDriverProfile();
+        _myRides = DemoModeData.demoDriverRides();
+        _isLoading = false;
+      });
+      return;
+    }
 
     // Load driver profile
     final profileRes = await DriverProfileApiService.getMyDriverProfile();
@@ -48,7 +74,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Future<void> _openCreateRide() async {
     final createdRide = await Navigator.push<Map<String, dynamic>>(
       context,
-      MaterialPageRoute(builder: (context) => const CreateRideScreen()),
+      MaterialPageRoute(
+        builder: (context) => CreateRideScreen(demoMode: _isDemoMode),
+      ),
     );
 
     if (!mounted || createdRide == null) return;
@@ -57,7 +85,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       _myRides = [
         createdRide,
         ..._myRides.where(
-          (ride) => ride['ride_id']?.toString() != createdRide['ride_id']?.toString(),
+          (ride) =>
+              ride['ride_id']?.toString() != createdRide['ride_id']?.toString(),
         ),
       ];
     });
@@ -118,6 +147,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (_isDemoMode) ...[
+                    _buildDemoBanner(cardColor),
+                    const SizedBox(height: 20),
+                  ],
                   // Quick stats
                   _buildStatsRow(cardColor),
                   const SizedBox(height: 20),
@@ -182,6 +215,36 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDemoBanner(Color cardColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kPrimary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: kPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.smart_display, color: kPrimary),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Text(
+              'Demo rides and requests are seeded locally so you can show the full driver workflow.',
+              style: TextStyle(color: kMuted, height: 1.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -344,7 +407,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => RideRequestsScreen(rideId: rideId),
+                      builder: (context) => RideRequestsScreen(
+                        rideId: rideId,
+                        demoMode: _isDemoMode,
+                      ),
                     ),
                   );
                 },

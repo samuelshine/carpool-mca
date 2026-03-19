@@ -33,3 +33,9 @@ class VerificationStatusEnum(str, enum.Enum):
     submitted = "submitted"
     verified = "verified"
     rejected = "rejected"
+
+
+class SOSAlertStatusEnum(str, enum.Enum):
+    open = "open"
+    resolved = "resolved"
+    closed = "closed"

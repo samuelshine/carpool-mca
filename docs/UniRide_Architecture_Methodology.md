@@ -27,7 +27,7 @@ The mobile app is designed with a **Service-Oriented Architecture** pattern sepa
 
 *   **UI/Screens (`screens/`)**: Grouped by feature domain (`auth/`, `home/`, `driver/`, `profile/`, `rides/`). Uses Material 3 design language with both Light and Dark mode support (`ThemeNotifier`).
 *   **Core Services (`services/`)**: Singleton-like classes handling all external communication and business logic abstraction:
-    *   `ApiService` / `RidesApiService`: Handle all HTTP/network communication with the FastAPI backend, including JWT token management and automatic refresh token rotation.
+    *   `ApiService` and its feature-specific service classes (for example `RideApiService`, `VerificationApiService`, `UserApiService`): Handle HTTP/network communication with the FastAPI backend, including JWT token management and automatic refresh token rotation.
     *   `LocationService`: Manages GPS, geolocation (Coordinates ↔ Address), and map routing (Nominatim/OSRM).
 
 ### 2.3 Deployment Architecture

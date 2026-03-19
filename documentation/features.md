@@ -2,6 +2,8 @@
 
 This file groups the project by capability rather than by file.
 
+Last reviewed: 2026-03-19
+
 ## Core user features
 
 ## 1. Passwordless authentication
@@ -52,10 +54,12 @@ Implemented or partially implemented:
 - campus destination selection
 - route preview using OSRM
 - fare estimate using backend fare API
+- matching ride browse screen backed by open rides
+- real rider join-request submission
 
 Current limitation:
 
-- the flow feels like a route-planning/request prototype more than a complete ride marketplace discovery flow
+- the flow is now backend-backed end to end for basic booking, but ride matching is still fairly simple and based on open rides plus destination proximity rather than richer search/ranking logic
 
 ## 4. Ride creation and management
 
@@ -70,8 +74,8 @@ Implemented backend support:
 
 Current frontend state:
 
-- ride creation exists at API level
-- driver dashboard does not yet provide a fully integrated create-ride flow
+- driver dashboard now opens a dedicated create-ride flow
+- ride creation is wired through backend vehicles, backend profile state, fare estimation, and `POST /rides/`
 
 ## 5. Ride request and participant management
 
@@ -103,11 +107,13 @@ Implemented frontend support:
 - driver/rider view toggling
 - OTP verification UI
 - progress/status display
+- backend tracking polling for real rides
+- backend driver location updates for real rides
 
 Current limitation:
 
 - tracking backend is single-instance and in-memory only
-- Flutter ride-live experience includes strong simulation behavior
+- Flutter still supports demo mode, but real rides now use backend tracking and ride-status state as the primary source of truth
 
 ## 7. Fare estimation
 
@@ -174,6 +180,10 @@ Current limitation:
 - auth flow
 - refresh token handling
 - user profile read/update basics
+- backend-backed profile vehicles
+- rider booking flow
+- driver create-ride flow
+- backend-backed history flow
 - ride request handling
 - admin verification review
 - fare estimation
@@ -186,7 +196,7 @@ Current limitation:
 - ride history/activity
 - verification UI
 - live tracking
-- profile vehicle management
+- safety/support surfaces
 
 ## Mostly prototype or local-state driven
 
@@ -197,12 +207,12 @@ Current limitation:
 
 ## Important mismatches and future-task warnings
 
-- Flutter has overlapping service layers: `RideApiService` and `RidesApiService`.
+- Flutter now uses a consolidated API layer in `api_service.dart`, so future mobile API work should extend that file rather than recreating feature-specific wrappers.
 - Some Flutter pages store data locally even though backend entities already exist.
 - `RideDetailsScreen` is still more of a showcase/mock screen than a canonical backend-backed page.
 - `RideHistoryScreen` now acts as a compatibility wrapper that forwards to the
   canonical backend-backed `ActivityHistoryScreen`.
-- Admin web assumes `API_BASE = http://localhost:8000`.
+- Admin web now supports environment-based API configuration and same-origin hosting fallback.
 - Backend tracking in memory conflicts with multi-worker deployment.
 - Backend models include scaffolded entities like `saved_addresses` and `face_data` that are not yet fully surfaced in the product.
 

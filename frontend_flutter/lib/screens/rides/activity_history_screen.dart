@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../auth/common_widgets.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
+import 'rate_ride_screen.dart';
 
 /// Shows ride history for the current user (as driver and rider).
 class ActivityHistoryScreen extends StatefulWidget {
-  const ActivityHistoryScreen({super.key});
+  final bool demoMode;
+
+  const ActivityHistoryScreen({super.key, this.demoMode = false});
 
   @override
   State<ActivityHistoryScreen> createState() => _ActivityHistoryScreenState();
@@ -16,6 +20,8 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
   bool _isLoading = true;
   List<dynamic> _allRides = [];
   String? _errorMessage;
+  String? _currentUserId;
+  final Map<String, List<Map<String, dynamic>>> _rideRatings = {};
 
   @override
   void initState() {
@@ -32,18 +38,302 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
 
   Future<void> _loadRides() async {
     setState(() => _isLoading = true);
+
+    if (widget.demoMode) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = null;
+        _allRides = DemoModeData.demoRideHistory();
+        _currentUserId = DemoModeData.currentUserId;
+        _rideRatings
+          ..clear()
+          ..addAll(DemoModeData.demoRatingsByRide());
+      });
+      return;
+    }
+
     final res = await RideApiService.listRideHistory();
+    final profileRes = await UserApiService.getMyProfile();
+
+    final rides = res.success && res.data is List
+        ? res.data as List
+        : <dynamic>[];
+    final completedRideIds = rides
+        .where((item) => item is Map<String, dynamic>)
+        .map((item) => item as Map<String, dynamic>)
+        .where((ride) => ride['history_state'] == 'completed')
+        .map((ride) => ride['ride_id']?.toString())
+        .whereType<String>()
+        .toList();
+
+    final ratingResponses = await Future.wait(
+      completedRideIds.map((rideId) => RatingApiService.getRideRatings(rideId)),
+    );
+
+    final ratingsByRideId = <String, List<Map<String, dynamic>>>{};
+    for (var i = 0; i < completedRideIds.length; i++) {
+      final response = ratingResponses[i];
+      if (response.success && response.data is List) {
+        ratingsByRideId[completedRideIds[i]] = (response.data as List)
+            .whereType<Map>()
+            .map<Map<String, dynamic>>(
+              (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+            )
+            .toList();
+      }
+    }
+
     if (mounted) {
       setState(() {
         _isLoading = false;
         _errorMessage = res.success ? null : res.error;
-        if (res.success && res.data is List) {
-          _allRides = res.data as List;
-        } else {
-          _allRides = [];
-        }
+        _allRides = rides;
+        _currentUserId =
+            profileRes.success && profileRes.data is Map<String, dynamic>
+            ? (profileRes.data as Map<String, dynamic>)['user_id']?.toString()
+            : null;
+        _rideRatings
+          ..clear()
+          ..addAll(ratingsByRideId);
       });
     }
+  }
+
+  Future<void> _refreshRideRatings(String rideId) async {
+    if (widget.demoMode) return;
+
+    final res = await RatingApiService.getRideRatings(rideId);
+    if (!mounted || !res.success || res.data is! List) return;
+    setState(() {
+      _rideRatings[rideId] = (res.data as List)
+          .whereType<Map>()
+          .map<Map<String, dynamic>>(
+            (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+          )
+          .toList();
+    });
+  }
+
+  bool _hasRatedUser(String rideId, String ratedUserId) {
+    if (_currentUserId == null) return false;
+    final ratings = _rideRatings[rideId] ?? const <Map<String, dynamic>>[];
+    return ratings.any(
+      (rating) =>
+          rating['rater_id']?.toString() == _currentUserId &&
+          rating['rated_user_id']?.toString() == ratedUserId,
+    );
+  }
+
+  Future<void> _openPassengerRating(Map<String, dynamic> ride) async {
+    final rideId = ride['ride_id']?.toString();
+    final driverId = ride['driver_id']?.toString();
+    if (rideId == null || driverId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Driver details are unavailable for this ride.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_hasRatedUser(rideId, driverId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You already rated the driver for this ride.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final submitted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RateRideScreen(
+          rideId: rideId,
+          ratedUserId: driverId,
+          ratedUserName: ride['driver_name']?.toString() ?? 'Driver',
+          isDriver: true,
+          demoMode: widget.demoMode,
+        ),
+      ),
+    );
+
+    if (submitted == true) {
+      await _refreshRideRatings(rideId);
+    }
+  }
+
+  Future<void> _openDriverRatingSheet(Map<String, dynamic> ride) async {
+    final rideId = ride['ride_id']?.toString();
+    if (rideId == null) return;
+
+    if (widget.demoMode) {
+      final participants = DemoModeData.demoParticipants();
+      await showModalBottomSheet(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Rate Your Riders',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Choose the rider you want to rate for this completed trip.',
+                  style: TextStyle(color: kMuted),
+                ),
+                const SizedBox(height: 12),
+                ...participants.map((participant) {
+                  final passengerId = participant['user_id']?.toString();
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: kPrimary.withValues(alpha: 0.12),
+                      child: const Icon(Icons.person, color: kPrimary),
+                    ),
+                    title: Text(
+                      participant['full_name']?.toString() ?? 'Passenger',
+                    ),
+                    subtitle: const Text('Tap to rate rider'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: passengerId == null
+                        ? null
+                        : () async {
+                            Navigator.pop(context);
+                            await Navigator.push<bool>(
+                              this.context,
+                              MaterialPageRoute(
+                                builder: (context) => RateRideScreen(
+                                  rideId: rideId,
+                                  ratedUserId: passengerId,
+                                  ratedUserName:
+                                      participant['full_name']?.toString() ??
+                                      'Passenger',
+                                  isDriver: false,
+                                  demoMode: true,
+                                ),
+                              ),
+                            );
+                          },
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final participantsRes = await RideApiService.getRideParticipants(rideId);
+    if (!mounted) return;
+
+    if (!participantsRes.success || participantsRes.data is! List) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            participantsRes.error ?? 'Unable to load riders for rating.',
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final participants = (participantsRes.data as List)
+        .whereType<Map>()
+        .map<Map<String, dynamic>>(
+          (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+        )
+        .toList();
+
+    if (participants.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No confirmed riders found for this completed ride.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Rate Your Riders',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Choose the rider you want to rate for this completed trip.',
+                style: TextStyle(color: kMuted),
+              ),
+              const SizedBox(height: 12),
+              ...participants.map((participant) {
+                final passengerId = participant['user_id']?.toString();
+                final alreadyRated = passengerId != null
+                    ? _hasRatedUser(rideId, passengerId)
+                    : false;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: kPrimary.withValues(alpha: 0.12),
+                    child: const Icon(Icons.person, color: kPrimary),
+                  ),
+                  title: Text(
+                    participant['full_name']?.toString() ?? 'Passenger',
+                  ),
+                  subtitle: Text(
+                    alreadyRated ? 'Rating submitted' : 'Tap to rate rider',
+                  ),
+                  trailing: alreadyRated
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : const Icon(Icons.chevron_right),
+                  onTap: passengerId == null || alreadyRated
+                      ? null
+                      : () async {
+                          Navigator.pop(context);
+                          final submitted = await Navigator.push<bool>(
+                            this.context,
+                            MaterialPageRoute(
+                              builder: (context) => RateRideScreen(
+                                rideId: rideId,
+                                ratedUserId: passengerId,
+                                ratedUserName:
+                                    participant['full_name']?.toString() ??
+                                    'Passenger',
+                                isDriver: false,
+                                demoMode: widget.demoMode,
+                              ),
+                            ),
+                          );
+                          if (submitted == true) {
+                            await _refreshRideRatings(rideId);
+                          }
+                        },
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -233,6 +523,7 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
     final userRole = ride['user_role']?.toString() ?? 'user';
     final requestStatus = ride['request_status']?.toString();
     final isActive = historyState == 'active';
+    final isCompleted = historyState == 'completed';
 
     final statusColor = switch (historyState) {
       'active' => kPrimary,
@@ -408,8 +699,66 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
               ],
             ),
           ],
+          if (isCompleted) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+            _buildRatingAction(ride),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildRatingAction(Map<String, dynamic> ride) {
+    final userRole = ride['user_role']?.toString();
+    final rideId = ride['ride_id']?.toString();
+    final driverId = ride['driver_id']?.toString();
+
+    if (userRole == 'passenger' && rideId != null && driverId != null) {
+      final alreadyRated = _hasRatedUser(rideId, driverId);
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              alreadyRated
+                  ? 'You already rated the driver for this ride.'
+                  : 'Completed ride. Rate the driver to close the trip loop.',
+              style: const TextStyle(color: kMuted, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: alreadyRated ? null : () => _openPassengerRating(ride),
+            icon: Icon(
+              alreadyRated ? Icons.check_circle : Icons.star_outline,
+              size: 18,
+            ),
+            label: Text(alreadyRated ? 'Rated' : 'Rate Driver'),
+          ),
+        ],
+      );
+    }
+
+    if (userRole == 'driver' && rideId != null) {
+      return Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Completed ride. Rate your confirmed rider or riders.',
+              style: TextStyle(color: kMuted, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: () => _openDriverRatingSheet(ride),
+            icon: const Icon(Icons.star_outline, size: 18),
+            label: const Text('Rate Rider'),
+          ),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }

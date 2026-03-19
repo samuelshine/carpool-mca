@@ -18,8 +18,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   String? _selectedCampus;
   bool _isLoadingLocation = false;
   bool _isSearching = false;
+  bool _isLoadingSavedAddresses = false;
   LatLng? _fromLatLng;
   List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _savedAddresses = [];
   bool _showSearchResults = false;
 
   // Debounce timer for search
@@ -52,6 +54,21 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
       'lng': 77.5950,
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedAddresses();
+  }
+
+  Future<void> _loadSavedAddresses() async {
+    final saved = await LocationService.getSavedAddresses();
+    if (!mounted) return;
+    setState(() {
+      _savedAddresses = saved;
+      _isLoadingSavedAddresses = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -110,23 +127,82 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   Future<void> _useSavedAddress() async {
     setState(() => _showSearchResults = false);
 
-    final saved = await LocationService.getSavedPickupAddress();
+    final saved = await LocationService.getSavedAddresses();
 
-    if (saved != null) {
-      setState(() {
-        _fromController.text = saved['address'] as String;
-        _fromLatLng = LatLng(
-          (saved['lat'] as num).toDouble(),
-          (saved['lng'] as num).toDouble(),
-        );
-      });
-    } else {
-      if (mounted) {
-        _showSnackBar(
-          'No saved address found. Set a pickup location and save it!',
-          Colors.orange,
-        );
-      }
+    if (saved.isEmpty) {
+      if (!mounted) return;
+      _showSnackBar(
+        'No saved address found. Set a pickup location and save it!',
+        Colors.orange,
+      );
+      return;
+    }
+
+    if (saved.length == 1) {
+      _applySavedAddress(saved.first);
+      return;
+    }
+
+    if (!mounted) return;
+    _showSavedAddressPicker(saved);
+  }
+
+  void _applySavedAddress(Map<String, dynamic> saved) {
+    setState(() {
+      _fromController.text = saved['address'] as String;
+      _fromLatLng = LatLng(
+        (saved['lat'] as num).toDouble(),
+        (saved['lng'] as num).toDouble(),
+      );
+    });
+  }
+
+  void _showSavedAddressPicker(List<Map<String, dynamic>> addresses) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Choose Saved Address',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            ...addresses.map(
+              (saved) => ListTile(
+                leading: Icon(_savedAddressIcon(saved['type']?.toString())),
+                title: Text(saved['title']?.toString() ?? 'Saved Place'),
+                subtitle: Text(saved['address']?.toString() ?? ''),
+                onTap: () async {
+                  Navigator.pop(context);
+                  _applySavedAddress(saved);
+                  await LocationService.setPrimarySavedAddress(
+                    saved['id'].toString(),
+                  );
+                  await _loadSavedAddresses();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _savedAddressIcon(String? type) {
+    switch (type) {
+      case 'home':
+        return Icons.home;
+      case 'work':
+        return Icons.work;
+      default:
+        return Icons.location_on;
     }
   }
 
@@ -197,14 +273,35 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
       return;
     }
 
-    await LocationService.savePickupAddress(
-      address: _fromController.text,
-      lat: _fromLatLng!.latitude,
-      lng: _fromLatLng!.longitude,
+    setState(() => _isLoadingSavedAddresses = true);
+
+    final existing = _savedAddresses.where(
+      (item) =>
+          item['address']?.toString().trim().toLowerCase() ==
+          _fromController.text.trim().toLowerCase(),
     );
 
+    await LocationService.saveSavedAddress(
+      id: existing.isNotEmpty ? existing.first['id']?.toString() : null,
+      title: existing.isNotEmpty
+          ? existing.first['title']?.toString() ?? 'Saved Place'
+          : 'Saved Place ${_savedAddresses.length + 1}',
+      address: _fromController.text.trim(),
+      lat: _fromLatLng!.latitude,
+      lng: _fromLatLng!.longitude,
+      type: existing.isNotEmpty
+          ? existing.first['type']?.toString() ?? 'other'
+          : 'other',
+      makePrimary: true,
+    );
+    await _loadSavedAddresses();
+
     if (mounted) {
-      _showSnackBar('Address saved!', kPrimary);
+      setState(() => _isLoadingSavedAddresses = false);
+      _showSnackBar(
+        'Address saved locally. You can rename it in Preferences.',
+        kPrimary,
+      );
     }
   }
 
@@ -409,6 +506,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                       label: 'Saved',
                       onTap: _useSavedAddress,
                       cardColor: cardColor,
+                      isActive: _savedAddresses.isNotEmpty,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -419,6 +517,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                       onTap: _saveCurrentAddress,
                       cardColor: cardColor,
                       isActive: _fromLatLng != null,
+                      isLoading: _isLoadingSavedAddresses,
                     ),
                   ),
                 ],
@@ -558,7 +657,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     bool isActive = true,
   }) {
     return GestureDetector(
-      onTap: isLoading ? null : onTap,
+      onTap: (isLoading || !isActive) ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),

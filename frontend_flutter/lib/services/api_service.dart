@@ -525,6 +525,18 @@ class VehicleApiService {
     );
   }
 
+  /// PUT /vehicles/{vehicleId} — Update an owned vehicle.
+  static Future<ApiResponse> updateVehicle({
+    required String vehicleId,
+    String? vehicleType,
+    String? vehicleNumber,
+  }) async {
+    final body = <String, dynamic>{};
+    if (vehicleType != null) body['vehicle_type'] = vehicleType;
+    if (vehicleNumber != null) body['vehicle_number'] = vehicleNumber;
+    return ApiService.put('/vehicles/$vehicleId', auth: true, body: body);
+  }
+
   /// DELETE /vehicles/{vehicleId} — Delete a vehicle.
   static Future<ApiResponse> deleteVehicle(String vehicleId) async {
     return ApiService.delete('/vehicles/$vehicleId', auth: true);
@@ -565,6 +577,74 @@ class DriverProfileApiService {
     if (dailySeatLimit != null) body['daily_seat_limit'] = dailySeatLimit;
     if (isDriverActive != null) body['is_driver_active'] = isDriverActive;
     return ApiService.put('/driver-profiles/me', auth: true, body: body);
+  }
+}
+
+// =============================================================================
+// VERIFICATION API SERVICE
+// =============================================================================
+
+/// Verification API methods matching backend /verification endpoints.
+class VerificationApiService {
+  /// POST /verification/email/send-otp — Send OTP to Christ email.
+  static Future<ApiResponse> sendEmailOtp(String email) async {
+    return ApiService.post(
+      '/verification/email/send-otp',
+      auth: true,
+      body: {'email': email},
+    );
+  }
+
+  /// POST /verification/email/verify-otp — Verify Christ email OTP.
+  static Future<ApiResponse> verifyEmailOtp(
+    String emailSessionToken,
+    String otp,
+  ) async {
+    return ApiService.post(
+      '/verification/email/verify-otp',
+      auth: true,
+      body: {'email_session_token': emailSessionToken, 'otp': otp},
+    );
+  }
+
+  /// POST /verification/identity/submit — Submit identity verification.
+  static Future<ApiResponse> submitIdentityVerification({
+    required String documentUrl,
+    String? collegeIdNumber,
+  }) async {
+    return ApiService.post(
+      '/verification/identity/submit',
+      auth: true,
+      body: {
+        'document_url': documentUrl,
+        if (collegeIdNumber != null) 'college_id_number': collegeIdNumber,
+      },
+    );
+  }
+
+  /// GET /verification/identity/status — Get current identity verification state.
+  static Future<ApiResponse> getIdentityStatus() async {
+    return ApiService.get('/verification/identity/status', auth: true);
+  }
+
+  /// POST /verification/driver/submit — Submit driver verification.
+  static Future<ApiResponse> submitDriverVerification({
+    required String licenseDocumentUrl,
+    String? licenseNumber,
+  }) async {
+    return ApiService.post(
+      '/verification/driver/submit',
+      auth: true,
+      body: {
+        'license_document_url': licenseDocumentUrl,
+        if (licenseNumber != null) 'license_number': licenseNumber,
+      },
+    );
+  }
+
+  /// GET /verification/driver/status — Get current driver verification state.
+  static Future<ApiResponse> getDriverVerificationStatus() async {
+    return ApiService.get('/verification/driver/status', auth: true);
   }
 }
 

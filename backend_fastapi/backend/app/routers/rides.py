@@ -178,6 +178,7 @@ async def list_my_ride_history(user: CurrentUser, db: DBSession):
             RideHistoryItemRead(
                 ride_id=ride.ride_id,
                 user_role="driver",
+                driver_id=ride.driver_id,
                 history_state=_history_state_from_ride_status(ride.status),
                 status_label=_status_label_from_ride_status(ride.status),
                 ride_status=ride.status,
@@ -202,6 +203,7 @@ async def list_my_ride_history(user: CurrentUser, db: DBSession):
             RideHistoryItemRead(
                 ride_id=ride.ride_id,
                 user_role="passenger",
+                driver_id=ride.driver_id,
                 history_state=_history_state_from_ride_status(ride.status),
                 status_label=_status_label_from_ride_status(ride.status),
                 ride_status=ride.status,
@@ -226,6 +228,7 @@ async def list_my_ride_history(user: CurrentUser, db: DBSession):
             RideHistoryItemRead(
                 ride_id=ride.ride_id,
                 user_role="requester",
+                driver_id=ride.driver_id,
                 history_state="requested",
                 status_label=request.request_status.value.upper(),
                 ride_status=ride.status,

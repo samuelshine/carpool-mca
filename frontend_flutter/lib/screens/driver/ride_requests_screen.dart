@@ -3,11 +3,18 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 
 /// Shows pending ride requests for a driver to accept or reject.
 class RideRequestsScreen extends StatefulWidget {
   final String rideId;
-  const RideRequestsScreen({super.key, required this.rideId});
+  final bool demoMode;
+
+  const RideRequestsScreen({
+    super.key,
+    required this.rideId,
+    this.demoMode = false,
+  });
 
   @override
   State<RideRequestsScreen> createState() => _RideRequestsScreenState();
@@ -27,6 +34,24 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
+    if (widget.demoMode) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _requests = DemoModeData.demoRideRequests()
+            .map(
+              (request) => {
+                ...request,
+                'passenger_name': request['full_name'],
+                'passenger_phone': '+91 90000 00000',
+              },
+            )
+            .toList();
+        _participants = DemoModeData.demoParticipants();
+      });
+      return;
+    }
+
     final reqRes = await RideApiService.getRideRequests(widget.rideId);
     final partRes = await RideApiService.getRideParticipants(widget.rideId);
 
@@ -44,6 +69,52 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
   }
 
   Future<void> _handleRequest(String requestId, String action) async {
+    if (widget.demoMode) {
+      final selected = _requests.cast<Map>().firstWhere(
+        (request) => request['request_id']?.toString() == requestId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (selected.isEmpty) return;
+
+      setState(() {
+        _requests = _requests
+            .where((request) => request['request_id']?.toString() != requestId)
+            .toList();
+
+        if (action == 'accept') {
+          _participants = [
+            ..._participants,
+            {
+              'participant_id': 'demo-participant-$requestId',
+              'user_id': selected['user_id'],
+              'full_name': selected['passenger_name'],
+              'pickup_address': selected['pickup_address'],
+              'pickup_lat': selected['pickup_lat'],
+              'pickup_lng': selected['pickup_lng'],
+              'is_picked_up': false,
+              'pickup_otp': '5932',
+            },
+          ];
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            action == 'accept'
+                ? 'Demo request accepted and moved to passengers.'
+                : 'Demo request rejected.',
+          ),
+          backgroundColor: action == 'accept' ? kPrimary : Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
     final res = await RideApiService.handleRideRequest(
       widget.rideId,
       requestId,
@@ -96,13 +167,23 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Ride Requests',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 18,
-                      ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Ride Requests',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
+                        if (widget.demoMode)
+                          Text(
+                            'Seeded demo data',
+                            style: TextStyle(color: kMuted, fontSize: 11),
+                          ),
+                      ],
                     ),
                   ),
                   Container(

@@ -1,13 +1,19 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:frontend_flutter/screens/profile/verification_screen.dart';
-import 'package:frontend_flutter/screens/auth/login.dart';
+
 import 'package:frontend_flutter/main.dart';
+import 'package:frontend_flutter/screens/auth/login.dart';
+import 'package:frontend_flutter/screens/profile/verification_screen.dart';
+
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
-  const UserProfileScreen({super.key});
+  final bool demoMode;
+
+  const UserProfileScreen({super.key, this.demoMode = false});
 
   @override
   State<UserProfileScreen> createState() => _UserProfileScreenState();
@@ -17,116 +23,187 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
 
-  // Data State - defaults shown when data not available
-  String name = 'User';
-  List<Map<String, String>> vehicles = [];
-
-  String contactNumber = 'Not available';
-  String orgEmail = 'Not available';
-  String personalEmail = 'Not available';
+  String _name = 'User';
+  String _contactNumber = 'Not available';
+  String _orgEmail = 'Not available';
+  String _community = 'Not set';
+  String _gender = 'Not set';
   bool _isEmailVerified = false;
   bool _isIdentityVerified = false;
   bool _isDriverVerified = false;
 
   bool _isLoading = true;
+  String? _loadError;
+  String? _vehicleActionId;
+  List<Map<String, dynamic>> _vehicles = [];
 
   @override
   void initState() {
     super.initState();
-    _loadUserProfile();
+    _loadProfileAndVehicles();
   }
 
-  Future<void> _loadUserProfile() async {
-    final profileRes = await UserApiService.getMyProfile();
-    if (profileRes.success && profileRes.data is Map<String, dynamic>) {
-      final profile = profileRes.data as Map<String, dynamic>;
+  Future<void> _loadProfileAndVehicles() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    if (widget.demoMode) {
+      final profile = DemoModeData.demoProfile();
+      if (!mounted) return;
       setState(() {
-        name = profile['full_name'] ?? 'User';
-        contactNumber = profile['phone_number'] ?? 'Not available';
-        orgEmail = profile['email'] ?? 'Not available';
+        _name = profile['full_name']?.toString() ?? 'Demo User';
+        _contactNumber = profile['phone_number']?.toString() ?? 'Not available';
+        _orgEmail = profile['email']?.toString() ?? 'Not available';
+        _community = _displayValue(profile['community']);
+        _gender = _formatGender(profile['gender']?.toString());
         _isEmailVerified = profile['is_email_verified'] == true;
         _isIdentityVerified = profile['is_identity_verified'] == true;
         _isDriverVerified = profile['is_driver_verified'] == true;
+        _vehicles = DemoModeData.demoVehicles();
         _isLoading = false;
+        _loadError = null;
+      });
+      return;
+    }
+
+    final profileRes = await UserApiService.getMyProfile();
+    final vehiclesRes = await VehicleApiService.getMyVehicles();
+
+    if (!mounted) return;
+
+    if (profileRes.success && profileRes.data is Map<String, dynamic>) {
+      final profile = profileRes.data as Map<String, dynamic>;
+      final vehicles = <Map<String, dynamic>>[];
+
+      if (vehiclesRes.success && vehiclesRes.data is List) {
+        for (final item in vehiclesRes.data as List) {
+          if (item is Map<String, dynamic>) {
+            vehicles.add(Map<String, dynamic>.from(item));
+          }
+        }
+      }
+
+      setState(() {
+        _name = profile['full_name']?.toString() ?? 'User';
+        _contactNumber = profile['phone_number']?.toString() ?? 'Not available';
+        _orgEmail = profile['email']?.toString() ?? 'Not available';
+        _community = _displayValue(profile['community']);
+        _gender = _formatGender(profile['gender']?.toString());
+        _isEmailVerified = profile['is_email_verified'] == true;
+        _isIdentityVerified = profile['is_identity_verified'] == true;
+        _isDriverVerified = profile['is_driver_verified'] == true;
+        _vehicles = vehicles;
+        _isLoading = false;
+        _loadError = vehiclesRes.success
+            ? null
+            : (vehiclesRes.error ?? 'Unable to load vehicles.');
       });
       return;
     }
 
     final localProfile = await AuthService.getUserProfile();
+    if (!mounted) return;
+
     setState(() {
-      name = localProfile['name'] ?? 'User';
-      contactNumber = localProfile['phone'] ?? 'Not available';
-      orgEmail = localProfile['email'] ?? 'Not available';
+      _name = localProfile['name'] ?? 'User';
+      _contactNumber = localProfile['phone'] ?? 'Not available';
+      _orgEmail = localProfile['email'] ?? 'Not available';
+      _vehicles = [];
       _isLoading = false;
+      _loadError = profileRes.error ?? 'Unable to load your profile.';
     });
   }
 
-  // ================= LOGIC =================
-
   Future<void> _pickImage(ImageSource source) async {
-    final XFile? picked = await _picker.pickImage(
-      source: source,
-      imageQuality: 80,
-    );
-    if (picked != null) setState(() => _profileImage = File(picked.path));
+    final picked = await _picker.pickImage(source: source, imageQuality: 80);
+    if (picked != null && mounted) {
+      setState(() => _profileImage = File(picked.path));
+    }
   }
 
-  Future<void> _openVehicleForm({
-    Map<String, String>? existingVehicle,
-    int? index,
-  }) async {
-    if (!_isDriverVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Driver verification is required before you can add vehicles.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+  Future<void> _openVehicleForm({Map<String, dynamic>? vehicle}) async {
+    if (widget.demoMode) {
+      _showMessage(
+        'Vehicle edits are read-only in Demo Mode. Use this screen to explain the verified-driver setup.',
       );
       return;
     }
 
-    final result = await Navigator.push(
+    if (!_isDriverVerified) {
+      _showMessage(
+        'Driver verification is required before you can add vehicles.',
+        isError: true,
+      );
+      return;
+    }
+
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => AddVehicleScreen(initialData: existingVehicle),
+        builder: (context) => AddVehicleScreen(initialData: vehicle),
       ),
     );
 
-    if (result != null) {
-      setState(() {
-        if (index != null) {
-          vehicles[index] = Map<String, String>.from(result);
-        } else {
-          vehicles.add(Map<String, String>.from(result));
-        }
-      });
+    if (changed == true) {
+      await _loadProfileAndVehicles();
     }
   }
 
-  void _deleteVehicle(int index) {
+  Future<void> _deleteVehicle(Map<String, dynamic> vehicle) async {
+    if (widget.demoMode) {
+      _showMessage('Vehicle deletes are disabled in Demo Mode.');
+      return;
+    }
+
+    final vehicleId = vehicle['vehicle_id']?.toString();
+    if (vehicleId == null) return;
+
     _showWarningDialog(
       title: 'Delete Vehicle',
       content:
-          'Are you sure you want to remove this vehicle from your profile?',
+          'Are you sure you want to remove this vehicle from your backend profile?',
       confirmText: 'Delete',
       confirmColor: Colors.red,
-      onConfirm: () {
-        setState(() => vehicles.removeAt(index));
+      onConfirm: () async {
         Navigator.pop(context);
+        setState(() => _vehicleActionId = vehicleId);
+        final res = await VehicleApiService.deleteVehicle(vehicleId);
+        if (!mounted) return;
+        setState(() => _vehicleActionId = null);
+
+        if (!res.success) {
+          _showMessage(
+            res.error ?? 'Unable to delete this vehicle right now.',
+            isError: true,
+          );
+          return;
+        }
+
+        _showMessage('Vehicle deleted successfully.');
+        await _loadProfileAndVehicles();
       },
     );
   }
 
-  // ================= ACTION DIALOGS =================
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   void _showWarningDialog({
     required String title,
     required String content,
     required String confirmText,
     required Color confirmColor,
-    required VoidCallback onConfirm,
+    required Future<void> Function() onConfirm,
   }) {
     showDialog(
       context: context,
@@ -143,7 +220,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: onConfirm,
+            onPressed: () async {
+              await onConfirm();
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: confirmColor,
               shape: RoundedRectangleBorder(
@@ -160,12 +239,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // ================= UI BUILD =================
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -178,23 +257,45 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildProfileHeader(),
-            const SizedBox(height: 16),
-            _buildStatsRow(),
-            const SizedBox(height: 16),
-            _buildVerificationButton(),
-            const SizedBox(height: 20),
-            _buildVehicleSection(),
-            const SizedBox(height: 20),
-            _buildMyAccountSection(),
-            const SizedBox(height: 20),
-            _buildDangerZone(), // Logout, Suspend, Delete
-            const SizedBox(height: 40),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _loadProfileAndVehicles,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              if (widget.demoMode) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Text(
+                    'Demo Mode shows a seeded profile and verified vehicle list. Actions that would change backend account data are intentionally disabled here.',
+                    style: TextStyle(color: Colors.black54, height: 1.4),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              _buildProfileHeader(),
+              const SizedBox(height: 16),
+              _buildStatsRow(),
+              const SizedBox(height: 16),
+              _buildVerificationButton(),
+              const SizedBox(height: 20),
+              _buildVehicleSection(),
+              const SizedBox(height: 20),
+              _buildMyAccountSection(),
+              const SizedBox(height: 20),
+              _buildDangerZone(),
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
       ),
     );
@@ -242,9 +343,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            name,
+            _name,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
+          const SizedBox(height: 6),
+          Text(_orgEmail, style: TextStyle(color: Colors.grey.shade600)),
         ],
       ),
     );
@@ -255,8 +358,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       children: [
         _buildStatCard('4.9', 'Rating', Icons.star, Colors.green),
         _buildStatCard(
-          vehicles.length.toString(),
-          'Rides',
+          _vehicles.length.toString(),
+          'Vehicles',
           Icons.directions_car,
           Colors.blue,
         ),
@@ -303,9 +406,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const VerificationScreen(),
+                    builder: (context) =>
+                        VerificationScreen(demoMode: widget.demoMode),
                   ),
-                ).then((_) => _loadUserProfile());
+                ).then((_) => _loadProfileAndVehicles());
               },
               icon: const Icon(
                 Icons.verified_user_outlined,
@@ -343,23 +447,46 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _sectionHeader(
             Icons.directions_car,
             'My Vehicles',
-            vehicles.isNotEmpty ? 'Add New' : '',
+            _isDriverVerified ? 'Add New' : '',
             () => _openVehicleForm(),
           ),
+          const SizedBox(height: 12),
+          Text(
+            'This section is now synced with your backend vehicles.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          if (_loadError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withOpacity(0.2)),
+              ),
+              child: Text(
+                _loadError!,
+                style: const TextStyle(color: Colors.black87),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
-          if (vehicles.isEmpty)
+          if (_vehicles.isEmpty)
             Center(
               child: Column(
                 children: [
                   Text(
                     _isDriverVerified
-                        ? 'No vehicle added yet'
+                        ? 'No backend vehicle added yet'
                         : 'Driver verification required before adding vehicles',
                     style: TextStyle(color: Colors.grey.shade600),
                     textAlign: TextAlign.center,
                   ),
                   TextButton(
-                    onPressed: () => _openVehicleForm(),
+                    onPressed: _isDriverVerified
+                        ? () => _openVehicleForm()
+                        : null,
                     child: const Text(
                       '+ Add Vehicle',
                       style: TextStyle(
@@ -375,10 +502,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: vehicles.length,
+              itemCount: _vehicles.length,
               separatorBuilder: (context, index) => const Divider(height: 24),
               itemBuilder: (context, index) {
-                final v = vehicles[index];
+                final vehicle = _vehicles[index];
+                final vehicleId = vehicle['vehicle_id']?.toString();
+                final isBusy = _vehicleActionId == vehicleId;
                 return Row(
                   children: [
                     Expanded(
@@ -386,7 +515,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "${v['makeModel']} (${v['type']})",
+                            _vehicleTypeLabel(
+                              vehicle['vehicle_type']?.toString(),
+                            ),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
@@ -394,7 +525,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            v['regNumber'] ?? '',
+                            vehicle['vehicle_number']?.toString() ?? '',
                             style: TextStyle(
                               color: Colors.blue.shade700,
                               fontWeight: FontWeight.w600,
@@ -404,18 +535,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_note, color: Colors.green),
-                      onPressed: () =>
-                          _openVehicleForm(existingVehicle: v, index: index),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
+                    if (isBusy)
+                      const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit_note, color: Colors.green),
+                        onPressed: () => _openVehicleForm(vehicle: vehicle),
                       ),
-                      onPressed: () => _deleteVehicle(index),
-                    ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => _deleteVehicle(vehicle),
+                      ),
+                    ],
                   ],
                 );
               },
@@ -425,10 +563,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildVerificationChip({
-    required String label,
-    required Color color,
-  }) {
+  Widget _buildVerificationChip({required String label, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -455,43 +590,45 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           'My Account',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: const Text('Manage your personal info'),
+        subtitle: const Text('Manage your backend profile details'),
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _infoTile('Contact Number', contactNumber),
+                _infoTile('Contact Number', _contactNumber),
                 const SizedBox(height: 12),
-                _infoTile('Organization Email', orgEmail),
+                _infoTile('Organization Email', _orgEmail),
                 const SizedBox(height: 12),
-                _infoTile('Personal Email', personalEmail),
+                _infoTile('Community', _community),
+                const SizedBox(height: 12),
+                _infoTile('Gender', _gender),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: () async {
-                      final result = await Navigator.push(
+                      final changed = await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (context) => EditProfileScreen(
                             initialData: {
-                              'name': name,
-                              'contact': contactNumber,
-                              'orgEmail': orgEmail,
-                              'personalEmail': personalEmail,
+                              'name': _name,
+                              'contact': _contactNumber,
+                              'orgEmail': _orgEmail,
+                              'community': _community == 'Not set'
+                                  ? ''
+                                  : _community,
+                              'gender': _gender.toLowerCase() == 'not set'
+                                  ? ''
+                                  : _gender.toLowerCase(),
                             },
                           ),
                         ),
                       );
-                      if (result != null) {
-                        setState(() {
-                          name = result['name'];
-                          contactNumber = result['contact'];
-                          orgEmail = result['orgEmail'];
-                          personalEmail = result['personalEmail'];
-                        });
+                      if (changed == true) {
+                        await _loadProfileAndVehicles();
                       }
                     },
                     child: const Text('Edit Account Details'),
@@ -518,13 +655,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               confirmText: 'Logout',
               confirmColor: Colors.orange,
               onConfirm: () async {
+                Navigator.pop(context);
                 await AuthService.logout();
-                if (mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const AuthScreen()),
-                    (route) => false,
-                  );
-                }
+                if (!mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const AuthScreen()),
+                  (route) => false,
+                );
               },
             );
           }),
@@ -540,7 +677,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     'This will hide your profile from others until you log back in. Continue?',
                 confirmText: 'Suspend',
                 confirmColor: Colors.redAccent,
-                onConfirm: () => Navigator.pop(context),
+                onConfirm: () async {
+                  Navigator.pop(context);
+                },
               );
             },
           ),
@@ -552,7 +691,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   'This action cannot be undone. All your data will be deleted forever.',
               confirmText: 'Delete Forever',
               confirmColor: Colors.red,
-              onConfirm: () => Navigator.pop(context),
+              onConfirm: () async {
+                Navigator.pop(context);
+              },
             );
           }),
         ],
@@ -560,7 +701,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // ================= HELPERS =================
   Widget _actionTile(
     IconData icon,
     String title,
@@ -700,10 +840,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 }
 
-// ================= EDIT PROFILE SCREEN =================
-
 class EditProfileScreen extends StatefulWidget {
   final Map<String, String> initialData;
+
   const EditProfileScreen({super.key, required this.initialData});
 
   @override
@@ -711,33 +850,71 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
-  late TextEditingController _contactController;
-  late TextEditingController _orgEmailController;
-  late TextEditingController _personalEmailController;
+  late TextEditingController _communityController;
+  late String _selectedGender;
+  bool _isSaving = false;
+
+  static const List<Map<String, String>> _genderOptions = [
+    {'value': 'male', 'label': 'Male'},
+    {'value': 'female', 'label': 'Female'},
+    {'value': 'other', 'label': 'Other'},
+  ];
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialData['name']);
-    _contactController = TextEditingController(
-      text: widget.initialData['contact'],
+    _communityController = TextEditingController(
+      text: widget.initialData['community'],
     );
-    _orgEmailController = TextEditingController(
-      text: widget.initialData['orgEmail'],
-    );
-    _personalEmailController = TextEditingController(
-      text: widget.initialData['personalEmail'],
-    );
+    final initialGender = widget.initialData['gender'];
+    _selectedGender = ['male', 'female', 'other'].contains(initialGender)
+        ? initialGender!
+        : 'other';
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _contactController.dispose();
-    _orgEmailController.dispose();
-    _personalEmailController.dispose();
+    _communityController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+    final res = await UserApiService.updateProfile(
+      fullName: _nameController.text.trim(),
+      community: _communityController.text.trim().isEmpty
+          ? null
+          : _communityController.text.trim(),
+      gender: _selectedGender,
+    );
+
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+
+    if (!res.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.error ?? 'Unable to save profile changes.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile updated successfully.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    Navigator.pop(context, true);
   }
 
   @override
@@ -745,68 +922,122 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Edit Personal Details',
+          'Edit Profile',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            _buildEditField('Full Name', Icons.person, _nameController),
-            const SizedBox(height: 16),
-            _buildEditField('Contact Number', Icons.phone, _contactController),
-            const SizedBox(height: 16),
-            _buildEditField(
-              'Organization Email',
-              Icons.school,
-              _orgEmailController,
-            ),
-            const SizedBox(height: 16),
-            _buildEditField(
-              'Personal Email',
-              Icons.email,
-              _personalEmailController,
-            ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(context, {
-                  'name': _nameController.text,
-                  'contact': _contactController.text,
-                  'orgEmail': _orgEmailController.text,
-                  'personalEmail': _personalEmailController.text,
-                }),
-                child: const Text(
-                  'Save Changes',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildEditField(
+                label: 'Full Name',
+                icon: Icons.person,
+                controller: _nameController,
+                validator: (value) {
+                  if ((value ?? '').trim().isEmpty) {
+                    return 'Please enter your full name';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              _buildReadOnlyField(
+                label: 'Contact Number',
+                value: widget.initialData['contact'] ?? 'Not available',
+                icon: Icons.phone,
+              ),
+              const SizedBox(height: 16),
+              _buildReadOnlyField(
+                label: 'Organization Email',
+                value: widget.initialData['orgEmail'] ?? 'Not available',
+                icon: Icons.school,
+              ),
+              const SizedBox(height: 16),
+              _buildEditField(
+                label: 'Community',
+                icon: Icons.groups_outlined,
+                controller: _communityController,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Gender',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedGender,
+                decoration: _inputDecoration(Icons.wc_outlined),
+                items: _genderOptions
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option['value'],
+                        child: Text(option['label']!),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedGender = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This form saves only fields currently supported by `PUT /users/me`.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: _isSaving ? null : _saveProfile,
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Save Changes',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEditField(
-    String label,
-    IconData icon,
-    TextEditingController controller,
-  ) {
+  Widget _buildEditField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    String? Function(String?)? validator,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -818,35 +1049,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: Colors.green),
-            filled: true,
-            fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.green),
-            ),
+          validator: validator,
+          decoration: _inputDecoration(icon),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyField({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey.shade700,
+            fontWeight: FontWeight.w600,
           ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          initialValue: value,
+          readOnly: true,
+          decoration: _inputDecoration(icon),
         ),
       ],
     );
   }
 }
 
-// ================= ADD VEHICLE SCREEN =================
-
 class AddVehicleScreen extends StatefulWidget {
-  final Map<String, String>? initialData;
+  final Map<String, dynamic>? initialData;
+
   const AddVehicleScreen({super.key, this.initialData});
 
   @override
@@ -855,62 +1095,77 @@ class AddVehicleScreen extends StatefulWidget {
 
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _formKey = GlobalKey<FormState>();
-  String? selectedType;
-  final List<String> vehicleTypes = ['Hatch Back', 'Sedan', 'SUV', 'Premium'];
-
-  late TextEditingController _regController;
-  late TextEditingController _seatsController;
-  late TextEditingController _modelController;
-  late TextEditingController _featuresController;
-  late TextEditingController _rcController; // Controller for RC Field
-
-  final RegExp indianPlateRegExp = RegExp(
+  final RegExp _indianPlateRegExp = RegExp(
     r'^[A-Z]{2}[ -]?[0-9]{1,2}(?:[ -]?[A-Z]{1,2})?[ -]?[0-9]{4}$',
   );
-  File? _rcImage;
-  final ImagePicker _picker = ImagePicker();
+  late TextEditingController _registrationController;
+  String? _selectedType;
+  bool _isSubmitting = false;
+
+  static const List<Map<String, String>> _vehicleTypes = [
+    {'value': '2_wheeler', 'label': 'Two Wheeler'},
+    {'value': '4_wheeler', 'label': 'Four Wheeler'},
+  ];
 
   @override
   void initState() {
     super.initState();
-    _regController = TextEditingController(
-      text: widget.initialData?['regNumber'],
+    _registrationController = TextEditingController(
+      text: widget.initialData?['vehicle_number']?.toString() ?? '',
     );
-    _seatsController = TextEditingController(
-      text: widget.initialData?['seats'],
-    );
-    _modelController = TextEditingController(
-      text: widget.initialData?['makeModel'],
-    );
-    _featuresController = TextEditingController(
-      text: widget.initialData?['features'],
-    );
-    _rcController = TextEditingController(
-      text: widget.initialData?['rcNumber'],
-    );
-    if (widget.initialData != null) {
-      selectedType = widget.initialData!['type'];
-    }
+    final initialType = widget.initialData?['vehicle_type']?.toString();
+    _selectedType = ['2_wheeler', '4_wheeler'].contains(initialType)
+        ? initialType
+        : null;
   }
 
   @override
   void dispose() {
-    _regController.dispose();
-    _seatsController.dispose();
-    _modelController.dispose();
-    _featuresController.dispose();
-    _rcController.dispose();
+    _registrationController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickRCImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() => _rcImage = File(image.path));
+  Future<void> _submitVehicle() async {
+    if (!_formKey.currentState!.validate() || _selectedType == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    final response = widget.initialData == null
+        ? await VehicleApiService.addVehicle(
+            vehicleType: _selectedType!,
+            vehicleNumber: _registrationController.text.trim().toUpperCase(),
+          )
+        : await VehicleApiService.updateVehicle(
+            vehicleId: widget.initialData!['vehicle_id'].toString(),
+            vehicleType: _selectedType,
+            vehicleNumber: _registrationController.text.trim().toUpperCase(),
+          );
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+
+    if (!response.success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RC Document Uploaded Successfully')),
+        SnackBar(
+          content: Text(response.error ?? 'Unable to save vehicle.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.initialData == null
+              ? 'Vehicle added successfully.'
+              : 'Vehicle updated successfully.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    Navigator.pop(context, true);
   }
 
   @override
@@ -935,105 +1190,41 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: selectedType,
+                value: _selectedType,
                 decoration: _inputDecoration(Icons.category),
-                items: vehicleTypes
+                items: _vehicleTypes
                     .map(
-                      (type) =>
-                          DropdownMenuItem(value: type, child: Text(type)),
+                      (type) => DropdownMenuItem<String>(
+                        value: type['value'],
+                        child: Text(type['label']!),
+                      ),
                     )
                     .toList(),
-                onChanged: (val) => setState(() => selectedType = val),
-                validator: (val) => val == null ? 'Please select a type' : null,
+                onChanged: (value) => setState(() => _selectedType = value),
+                validator: (value) =>
+                    value == null ? 'Please select a vehicle type' : null,
               ),
               const SizedBox(height: 16),
-              _buildLabel('Registration Number (Plate No.)'),
+              _buildLabel('Registration Number'),
               TextFormField(
-                controller: _regController,
+                controller: _registrationController,
                 textCapitalization: TextCapitalization.characters,
                 decoration: _inputDecoration(Icons.pin),
-                validator: (val) =>
-                    (val == null ||
-                        !indianPlateRegExp.hasMatch(val.toUpperCase()))
-                    ? 'Enter valid plate number'
-                    : null,
+                validator: (value) {
+                  final normalized = (value ?? '').trim().toUpperCase();
+                  if (normalized.isEmpty) {
+                    return 'Enter your registration number';
+                  }
+                  if (!_indianPlateRegExp.hasMatch(normalized)) {
+                    return 'Enter a valid registration number';
+                  }
+                  return null;
+                },
               ),
-              const SizedBox(height: 16),
-
-              // --- NEW RC VERIFICATION SECTION ---
-              _buildLabel('Vehicle Registration Certificate (RC)'),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _rcController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: _inputDecoration(
-                        Icons.description,
-                      ).copyWith(hintText: 'Enter RC Number'),
-                      validator: (val) => (val == null || val.isEmpty)
-                          ? 'RC Number required'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 58, // Matching TextField height
-                    child: ElevatedButton(
-                      onPressed: _pickRCImage,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _rcImage != null
-                            ? Colors.blue
-                            : Colors.orange,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        _rcImage != null ? 'Uploaded' : 'Verify',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (_rcImage != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    '✅ Document: ${_rcImage!.path.split('/').last}',
-                    style: const TextStyle(color: Colors.green, fontSize: 12),
-                  ),
-                ),
-              const SizedBox(height: 16),
-
-              // -----------------------------------
-              _buildLabel('Seats Offering'),
-              TextFormField(
-                controller: _seatsController,
-                keyboardType: TextInputType.number,
-                decoration: _inputDecoration(Icons.chair),
-                validator: (val) =>
-                    (val == null || val.isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              _buildLabel('Make and Model'),
-              TextFormField(
-                controller: _modelController,
-                decoration: _inputDecoration(Icons.directions_car),
-                maxLines: 2,
-                validator: (val) =>
-                    (val == null || val.isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              _buildLabel('Features'),
-              TextFormField(
-                controller: _featuresController,
-                decoration: _inputDecoration(Icons.featured_play_list),
-                maxLines: 2,
+              const SizedBox(height: 12),
+              Text(
+                'This form is aligned to the current backend vehicle schema: type and registration number.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
               ),
               const SizedBox(height: 40),
               SizedBox(
@@ -1046,35 +1237,25 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      if (_rcImage == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Please upload RC document to verify',
-                            ),
+                  onPressed: _isSubmitting ? null : _submitVehicle,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
-                        );
-                        return;
-                      }
-                      Navigator.pop(context, {
-                        'type': selectedType,
-                        'regNumber': _regController.text.toUpperCase(),
-                        'rcNumber': _rcController.text.toUpperCase(),
-                        'seats': _seatsController.text,
-                        'makeModel': _modelController.text,
-                        'features': _featuresController.text,
-                      });
-                    }
-                  },
-                  child: Text(
-                    widget.initialData == null ? 'Save' : 'Update',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                        )
+                      : Text(
+                          widget.initialData == null
+                              ? 'Save Vehicle'
+                              : 'Update Vehicle',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -1088,22 +1269,51 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
   );
+}
 
-  InputDecoration _inputDecoration(IconData icon) => InputDecoration(
-    prefixIcon: Icon(icon, color: Colors.green),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: Colors.grey.shade200),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.green),
-    ),
-  );
+InputDecoration _inputDecoration(IconData icon) => InputDecoration(
+  prefixIcon: Icon(icon, color: Colors.green),
+  filled: true,
+  fillColor: Colors.grey.shade50,
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Colors.grey.shade300),
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Colors.grey.shade200),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: const BorderSide(color: Colors.green),
+  ),
+);
+
+String _displayValue(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? 'Not set' : text;
+}
+
+String _formatGender(String? value) {
+  switch (value) {
+    case 'male':
+      return 'Male';
+    case 'female':
+      return 'Female';
+    case 'other':
+      return 'Other';
+    default:
+      return 'Not set';
+  }
+}
+
+String _vehicleTypeLabel(String? value) {
+  switch (value) {
+    case '2_wheeler':
+      return 'Two Wheeler';
+    case '4_wheeler':
+      return 'Four Wheeler';
+    default:
+      return 'Vehicle';
+  }
 }

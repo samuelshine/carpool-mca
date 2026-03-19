@@ -5,7 +5,7 @@ All endpoints require is_admin = True.
 
 User Management:
   GET  /admin/users                    — List all users (paginated)
-  GET  /admin/users/{user_id}         — Get user detail
+  GET  /admin/users/{user_id}         — Get enriched user detail
   PUT  /admin/users/{user_id}/deactivate — Deactivate user
 
 Identity Verification:
@@ -27,10 +27,10 @@ Stats:
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased
 from pydantic import BaseModel
 
 from core.deps import DBSession, CurrentUser
@@ -39,7 +39,11 @@ from db.models.identity_verifications import IdentityVerification
 from db.models.driver_verifications import DriverVerification
 from db.models.sos_alerts import SOSAlert
 from db.models.rides import Ride
-from db.enums import VerificationStatusEnum, RideStatusEnum
+from db.models.ride_requests import RideRequest
+from db.models.ride_participants import RideParticipant
+from db.models.reports import Report
+from db.models.vehicles import Vehicle
+from db.enums import VerificationStatusEnum, RideStatusEnum, SOSAlertStatusEnum
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -81,6 +85,80 @@ class UserListItem(BaseModel):
         from_attributes = True
 
 
+class UserVehicleItem(BaseModel):
+    vehicle_id: str
+    vehicle_type: str
+    vehicle_number: str
+    created_at: Optional[str]
+
+
+class VerificationDetail(BaseModel):
+    status: str
+    submitted_at: Optional[str]
+    reviewed_at: Optional[str]
+    reviewer_notes: Optional[str]
+    document_url: Optional[str] = None
+    college_id_number: Optional[str] = None
+    license_document_url: Optional[str] = None
+    license_number: Optional[str] = None
+
+
+class UserActivitySummary(BaseModel):
+    driver_rides: int
+    passenger_rides: int
+    ride_requests: int
+    reports_filed: int
+    reports_received: int
+    sos_triggered: int
+    vehicles: int
+
+
+class AdminUserRideItem(BaseModel):
+    ride_id: str
+    role: str
+    status: str
+    ride_date: Optional[str]
+    ride_time: Optional[str]
+    start_address: Optional[str]
+    end_address: Optional[str]
+    driver_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    request_status: Optional[str] = None
+    activity_at: Optional[str] = None
+
+
+class AdminUserReportItem(BaseModel):
+    report_id: str
+    ride_id: str
+    direction: str
+    other_user_id: str
+    other_user_name: str
+    comment: Optional[str]
+    created_at: Optional[str]
+
+
+class AdminUserSOSItem(BaseModel):
+    alert_id: str
+    ride_id: str
+    status: str
+    triggered_at: Optional[str]
+    resolved_at: Optional[str]
+    resolution_notes: Optional[str]
+
+
+class AdminUserDetail(UserListItem):
+    community: Optional[str]
+    profile_photo_url: Optional[str]
+    updated_at: Optional[str]
+    identity_verification: Optional[VerificationDetail]
+    driver_verification: Optional[VerificationDetail]
+    activity_summary: UserActivitySummary
+    vehicles: list[UserVehicleItem]
+    recent_rides: list[AdminUserRideItem]
+    recent_reports: list[AdminUserReportItem]
+    recent_sos_alerts: list[AdminUserSOSItem]
+
+
 class VerificationItem(BaseModel):
     user_id: str
     full_name: str
@@ -98,10 +176,121 @@ class VerificationItem(BaseModel):
 class SOSAlertItem(BaseModel):
     alert_id: str
     user_id: str
+    user_name: str
+    user_phone_number: str
+    user_email: Optional[str]
     ride_id: str
+    ride_date: Optional[str]
+    ride_time: Optional[str]
+    ride_status: Optional[str]
+    start_address: Optional[str]
+    end_address: Optional[str]
     triggered_at: Optional[str]
     latitude: Optional[float]
     longitude: Optional[float]
+    status: str
+    resolved_at: Optional[str]
+    resolved_by_user_id: Optional[str]
+    resolved_by_name: Optional[str]
+    resolution_notes: Optional[str]
+
+
+class SOSStatusUpdateRequest(BaseModel):
+    status: Literal["open", "resolved", "closed"]
+    notes: Optional[str] = None
+
+
+def _extract_alert_location(alert: SOSAlert) -> tuple[Optional[float], Optional[float]]:
+    lat, lng = None, None
+    if alert.location is not None:
+        try:
+            from geoalchemy2.shape import to_shape
+            point = to_shape(alert.location)
+            lat, lng = point.y, point.x
+        except Exception:
+            pass
+    return lat, lng
+
+
+def _enum_value(value):
+    if value is None:
+        return None
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _serialize_user_list_item(user: User) -> UserListItem:
+    return UserListItem(
+        user_id=str(user.user_id),
+        full_name=user.full_name,
+        phone_number=user.phone_number,
+        email=user.email,
+        gender=_enum_value(user.gender) or "",
+        is_active=user.is_active,
+        is_phone_verified=user.is_phone_verified,
+        is_email_verified=user.is_email_verified,
+        is_identity_verified=user.is_identity_verified,
+        is_driver_verified=user.is_driver_verified,
+        is_admin=user.is_admin,
+        created_at=str(user.created_at) if user.created_at else None,
+    )
+
+
+def _serialize_verification_detail(record) -> VerificationDetail:
+    return VerificationDetail(
+        status=_enum_value(record.status) or "pending",
+        submitted_at=str(record.created_at) if record.created_at else None,
+        reviewed_at=str(record.reviewed_at) if record.reviewed_at else None,
+        reviewer_notes=record.reviewer_notes,
+        document_url=getattr(record, "document_url", None),
+        college_id_number=getattr(record, "college_id_number", None),
+        license_document_url=getattr(record, "license_document_url", None),
+        license_number=getattr(record, "license_number", None),
+    )
+
+
+def _serialize_sos_item(
+    alert: SOSAlert,
+    user: User,
+    ride: Ride,
+    resolver: Optional[User] = None,
+) -> SOSAlertItem:
+    lat, lng = _extract_alert_location(alert)
+    return SOSAlertItem(
+        alert_id=str(alert.alert_id),
+        user_id=str(alert.user_id),
+        user_name=user.full_name,
+        user_phone_number=user.phone_number,
+        user_email=user.email,
+        ride_id=str(alert.ride_id),
+        ride_date=str(ride.ride_date) if ride.ride_date else None,
+        ride_time=str(ride.ride_time) if ride.ride_time else None,
+        ride_status=ride.status.value if hasattr(ride.status, "value") else str(ride.status),
+        start_address=ride.start_address,
+        end_address=ride.end_address,
+        triggered_at=str(alert.triggered_at) if alert.triggered_at else None,
+        latitude=lat,
+        longitude=lng,
+        status=alert.status.value if hasattr(alert.status, "value") else str(alert.status),
+        resolved_at=str(alert.resolved_at) if alert.resolved_at else None,
+        resolved_by_user_id=str(alert.resolved_by_user_id) if alert.resolved_by_user_id else None,
+        resolved_by_name=resolver.full_name if resolver else None,
+        resolution_notes=alert.resolution_notes,
+    )
+
+
+async def _get_sos_alert_row(
+    db: DBSession,
+    alert_id: uuid.UUID,
+) -> tuple[SOSAlert, User, Ride, Optional[User]] | None:
+    resolver = aliased(User)
+    result = await db.execute(
+        select(SOSAlert, User, Ride, resolver)
+        .join(User, SOSAlert.user_id == User.user_id)
+        .join(Ride, SOSAlert.ride_id == Ride.ride_id)
+        .outerjoin(resolver, SOSAlert.resolved_by_user_id == resolver.user_id)
+        .where(SOSAlert.alert_id == alert_id)
+    )
+    return result.first()
 
 
 # ---------------------------------------------------------------------------
@@ -121,49 +310,272 @@ async def list_users(
         select(User).order_by(User.created_at.desc()).offset(offset).limit(page_size)
     )
     users = result.scalars().all()
-    return [
-        UserListItem(
-            user_id=str(u.user_id),
-            full_name=u.full_name,
-            phone_number=u.phone_number,
-            email=u.email,
-            gender=u.gender.value if hasattr(u.gender, "value") else u.gender,
-            is_active=u.is_active,
-            is_phone_verified=u.is_phone_verified,
-            is_email_verified=u.is_email_verified,
-            is_identity_verified=u.is_identity_verified,
-            is_driver_verified=u.is_driver_verified,
-            is_admin=u.is_admin,
-            created_at=str(u.created_at) if u.created_at else None,
-        )
-        for u in users
-    ]
+    return [_serialize_user_list_item(u) for u in users]
 
 
-@router.get("/users/{user_id}", response_model=UserListItem)
+@router.get("/users/{user_id}", response_model=AdminUserDetail)
 async def get_user(
     user_id: uuid.UUID,
     _: User = AdminUser,
     db: DBSession = None,
 ):
-    """Get a specific user's details."""
+    """Get a specific user's details plus support and moderation context."""
     result = await db.execute(select(User).where(User.user_id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return UserListItem(
-        user_id=str(user.user_id),
-        full_name=user.full_name,
-        phone_number=user.phone_number,
-        email=user.email,
-        gender=user.gender.value if hasattr(user.gender, "value") else user.gender,
-        is_active=user.is_active,
-        is_phone_verified=user.is_phone_verified,
-        is_email_verified=user.is_email_verified,
-        is_identity_verified=user.is_identity_verified,
-        is_driver_verified=user.is_driver_verified,
-        is_admin=user.is_admin,
-        created_at=str(user.created_at) if user.created_at else None,
+
+    identity_result = await db.execute(
+        select(IdentityVerification)
+        .where(IdentityVerification.user_id == user_id)
+        .order_by(IdentityVerification.created_at.desc())
+        .limit(1)
+    )
+    identity_record = identity_result.scalar_one_or_none()
+
+    driver_result = await db.execute(
+        select(DriverVerification)
+        .where(DriverVerification.user_id == user_id)
+        .order_by(DriverVerification.created_at.desc())
+        .limit(1)
+    )
+    driver_record = driver_result.scalar_one_or_none()
+
+    vehicles_result = await db.execute(
+        select(Vehicle)
+        .where(Vehicle.user_id == user_id)
+        .order_by(Vehicle.created_at.desc())
+    )
+    vehicles = vehicles_result.scalars().all()
+
+    driver_rides_result = await db.execute(
+        select(Ride, Vehicle)
+        .outerjoin(Vehicle, Ride.vehicle_id == Vehicle.vehicle_id)
+        .where(Ride.driver_id == user_id)
+        .order_by(Ride.created_at.desc())
+        .limit(5)
+    )
+    driver_rides = [
+        {
+            "ride_id": str(ride.ride_id),
+            "role": "driver",
+            "status": _enum_value(ride.status) or "unknown",
+            "ride_date": str(ride.ride_date) if ride.ride_date else None,
+            "ride_time": str(ride.ride_time) if ride.ride_time else None,
+            "start_address": ride.start_address,
+            "end_address": ride.end_address,
+            "driver_name": user.full_name,
+            "vehicle_number": vehicle.vehicle_number if vehicle else None,
+            "request_status": None,
+            "activity_at": str(ride.created_at) if ride.created_at else None,
+        }
+        for ride, vehicle in driver_rides_result.all()
+    ]
+
+    driver_alias = aliased(User)
+    participant_rides_result = await db.execute(
+        select(RideParticipant, Ride, driver_alias, Vehicle)
+        .join(Ride, RideParticipant.ride_id == Ride.ride_id)
+        .join(driver_alias, Ride.driver_id == driver_alias.user_id)
+        .outerjoin(Vehicle, Ride.vehicle_id == Vehicle.vehicle_id)
+        .where(RideParticipant.user_id == user_id)
+        .order_by(RideParticipant.joined_at.desc())
+        .limit(5)
+    )
+    participant_rides = [
+        {
+            "ride_id": str(ride.ride_id),
+            "role": "passenger",
+            "status": _enum_value(ride.status) or "unknown",
+            "ride_date": str(ride.ride_date) if ride.ride_date else None,
+            "ride_time": str(ride.ride_time) if ride.ride_time else None,
+            "start_address": ride.start_address,
+            "end_address": ride.end_address,
+            "driver_name": driver_user.full_name,
+            "vehicle_number": vehicle.vehicle_number if vehicle else None,
+            "request_status": None,
+            "activity_at": str(participant.joined_at) if participant.joined_at else None,
+        }
+        for participant, ride, driver_user, vehicle in participant_rides_result.all()
+    ]
+
+    request_driver_alias = aliased(User)
+    ride_requests_result = await db.execute(
+        select(RideRequest, Ride, request_driver_alias)
+        .join(Ride, RideRequest.ride_id == Ride.ride_id)
+        .join(request_driver_alias, Ride.driver_id == request_driver_alias.user_id)
+        .where(RideRequest.passenger_id == user_id)
+        .order_by(RideRequest.requested_at.desc())
+        .limit(5)
+    )
+    ride_requests = [
+        {
+            "ride_id": str(ride.ride_id),
+            "role": "requester",
+            "status": _enum_value(ride.status) or "unknown",
+            "ride_date": str(ride.ride_date) if ride.ride_date else None,
+            "ride_time": str(ride.ride_time) if ride.ride_time else None,
+            "start_address": ride.start_address,
+            "end_address": ride.end_address,
+            "driver_name": driver_user.full_name,
+            "vehicle_number": None,
+            "request_status": _enum_value(request.request_status),
+            "activity_at": str(request.requested_at) if request.requested_at else None,
+        }
+        for request, ride, driver_user in ride_requests_result.all()
+    ]
+
+    recent_rides = sorted(
+        driver_rides + participant_rides + ride_requests,
+        key=lambda item: item["activity_at"] or "",
+        reverse=True,
+    )[:8]
+
+    reported_alias = aliased(User)
+    filed_reports_result = await db.execute(
+        select(Report, reported_alias)
+        .join(reported_alias, Report.reported_user_id == reported_alias.user_id)
+        .where(Report.reporter_id == user_id)
+        .order_by(Report.created_at.desc())
+        .limit(5)
+    )
+    filed_reports = [
+        {
+            "report_id": str(report.report_id),
+            "ride_id": str(report.ride_id),
+            "direction": "filed",
+            "other_user_id": str(other_user.user_id),
+            "other_user_name": other_user.full_name,
+            "comment": report.comment,
+            "created_at": str(report.created_at) if report.created_at else None,
+        }
+        for report, other_user in filed_reports_result.all()
+    ]
+
+    reporter_alias = aliased(User)
+    received_reports_result = await db.execute(
+        select(Report, reporter_alias)
+        .join(reporter_alias, Report.reporter_id == reporter_alias.user_id)
+        .where(Report.reported_user_id == user_id)
+        .order_by(Report.created_at.desc())
+        .limit(5)
+    )
+    received_reports = [
+        {
+            "report_id": str(report.report_id),
+            "ride_id": str(report.ride_id),
+            "direction": "received",
+            "other_user_id": str(other_user.user_id),
+            "other_user_name": other_user.full_name,
+            "comment": report.comment,
+            "created_at": str(report.created_at) if report.created_at else None,
+        }
+        for report, other_user in received_reports_result.all()
+    ]
+
+    recent_reports = sorted(
+        filed_reports + received_reports,
+        key=lambda item: item["created_at"] or "",
+        reverse=True,
+    )[:8]
+
+    sos_result = await db.execute(
+        select(SOSAlert)
+        .where(SOSAlert.user_id == user_id)
+        .order_by(SOSAlert.triggered_at.desc())
+        .limit(8)
+    )
+    sos_alerts = sos_result.scalars().all()
+
+    driver_rides_count = (
+        await db.execute(
+            select(func.count(Ride.ride_id)).where(Ride.driver_id == user_id)
+        )
+    ).scalar() or 0
+    passenger_rides_count = (
+        await db.execute(
+            select(func.count(RideParticipant.participant_id))
+            .where(RideParticipant.user_id == user_id)
+        )
+    ).scalar() or 0
+    ride_requests_count = (
+        await db.execute(
+            select(func.count(RideRequest.request_id))
+            .where(RideRequest.passenger_id == user_id)
+        )
+    ).scalar() or 0
+    reports_filed_count = (
+        await db.execute(
+            select(func.count(Report.report_id)).where(Report.reporter_id == user_id)
+        )
+    ).scalar() or 0
+    reports_received_count = (
+        await db.execute(
+            select(func.count(Report.report_id)).where(Report.reported_user_id == user_id)
+        )
+    ).scalar() or 0
+    sos_count = (
+        await db.execute(
+            select(func.count(SOSAlert.alert_id)).where(SOSAlert.user_id == user_id)
+        )
+    ).scalar() or 0
+
+    list_item = _serialize_user_list_item(user)
+    return AdminUserDetail(
+        user_id=list_item.user_id,
+        full_name=list_item.full_name,
+        phone_number=list_item.phone_number,
+        email=list_item.email,
+        gender=list_item.gender,
+        is_active=list_item.is_active,
+        is_phone_verified=list_item.is_phone_verified,
+        is_email_verified=list_item.is_email_verified,
+        is_identity_verified=list_item.is_identity_verified,
+        is_driver_verified=list_item.is_driver_verified,
+        is_admin=list_item.is_admin,
+        created_at=list_item.created_at,
+        community=user.community,
+        profile_photo_url=user.profile_photo_url,
+        updated_at=str(user.updated_at) if user.updated_at else None,
+        identity_verification=_serialize_verification_detail(identity_record) if identity_record else None,
+        driver_verification=_serialize_verification_detail(driver_record) if driver_record else None,
+        activity_summary=UserActivitySummary(
+            driver_rides=driver_rides_count,
+            passenger_rides=passenger_rides_count,
+            ride_requests=ride_requests_count,
+            reports_filed=reports_filed_count,
+            reports_received=reports_received_count,
+            sos_triggered=sos_count,
+            vehicles=len(vehicles),
+        ),
+        vehicles=[
+            UserVehicleItem(
+                vehicle_id=str(vehicle.vehicle_id),
+                vehicle_type=_enum_value(vehicle.vehicle_type) or "",
+                vehicle_number=vehicle.vehicle_number,
+                created_at=str(vehicle.created_at) if vehicle.created_at else None,
+            )
+            for vehicle in vehicles
+        ],
+        recent_rides=[
+            AdminUserRideItem(**item)
+            for item in recent_rides
+        ],
+        recent_reports=[
+            AdminUserReportItem(**item)
+            for item in recent_reports
+        ],
+        recent_sos_alerts=[
+            AdminUserSOSItem(
+                alert_id=str(alert.alert_id),
+                ride_id=str(alert.ride_id),
+                status=_enum_value(alert.status) or "open",
+                triggered_at=str(alert.triggered_at) if alert.triggered_at else None,
+                resolved_at=str(alert.resolved_at) if alert.resolved_at else None,
+                resolution_notes=alert.resolution_notes,
+            )
+            for alert in sos_alerts
+        ],
     )
 
 
@@ -369,36 +781,112 @@ async def reject_driver(
 # SOS ALERTS
 # ---------------------------------------------------------------------------
 
+@router.get("/sos", response_model=list[SOSAlertItem])
+async def list_sos_alerts(
+    _: User = AdminUser,
+    db: DBSession = None,
+    status_filter: str = Query("all", alias="status"),
+    page_size: int = Query(100, ge=1, le=250),
+):
+    """List SOS alerts for admin triage."""
+    normalized_status = status_filter.lower()
+    if normalized_status not in {"all", "open", "resolved", "closed"}:
+        raise HTTPException(
+            status_code=400,
+            detail="status must be one of: all, open, resolved, closed",
+        )
+
+    resolver = aliased(User)
+    stmt = (
+        select(SOSAlert, User, Ride, resolver)
+        .join(User, SOSAlert.user_id == User.user_id)
+        .join(Ride, SOSAlert.ride_id == Ride.ride_id)
+        .outerjoin(resolver, SOSAlert.resolved_by_user_id == resolver.user_id)
+        .order_by(SOSAlert.triggered_at.desc())
+        .limit(page_size)
+    )
+    if normalized_status != "all":
+        stmt = stmt.where(SOSAlert.status == SOSAlertStatusEnum(normalized_status))
+
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        _serialize_sos_item(alert, user, ride, resolver_user)
+        for alert, user, ride, resolver_user in rows
+    ]
+
+
 @router.get("/sos/active", response_model=list[SOSAlertItem])
 async def list_active_sos(
     _: User = AdminUser,
     db: DBSession = None,
 ):
-    """List all unresolved SOS alerts with location."""
-    result = await db.execute(
-        select(SOSAlert).order_by(SOSAlert.triggered_at.desc())
-    )
-    alerts = result.scalars().all()
+    """List open SOS alerts with location."""
+    return await list_sos_alerts(_, db, status_filter="open", page_size=100)
 
-    items = []
-    for alert in alerts:
-        lat, lng = None, None
-        if alert.location is not None:
-            try:
-                from geoalchemy2.shape import to_shape
-                point = to_shape(alert.location)
-                lat, lng = point.y, point.x
-            except Exception:
-                pass
-        items.append(SOSAlertItem(
-            alert_id=str(alert.alert_id),
-            user_id=str(alert.user_id),
-            ride_id=str(alert.ride_id),
-            triggered_at=str(alert.triggered_at) if alert.triggered_at else None,
-            latitude=lat,
-            longitude=lng,
-        ))
-    return items
+
+@router.put("/sos/{alert_id}/status", response_model=SOSAlertItem)
+async def update_sos_status(
+    alert_id: uuid.UUID,
+    payload: SOSStatusUpdateRequest,
+    admin: User = AdminUser,
+    db: DBSession = None,
+):
+    """Update SOS lifecycle status for admin triage."""
+    row = await _get_sos_alert_row(db, alert_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="SOS alert not found")
+
+    alert, _, _, _ = row
+    next_status = SOSAlertStatusEnum(payload.status)
+    alert.status = next_status
+
+    if next_status == SOSAlertStatusEnum.open:
+        alert.resolved_at = None
+        alert.resolved_by_user_id = None
+    else:
+        alert.resolved_at = datetime.now(timezone.utc)
+        alert.resolved_by_user_id = admin.user_id
+
+    alert.resolution_notes = payload.notes
+    await db.flush()
+
+    updated_row = await _get_sos_alert_row(db, alert_id)
+    assert updated_row is not None
+    updated_alert, user, ride, resolver = updated_row
+    return _serialize_sos_item(updated_alert, user, ride, resolver)
+
+
+@router.put("/sos/{alert_id}/resolve", response_model=SOSAlertItem)
+async def resolve_sos_alert(
+    alert_id: uuid.UUID,
+    payload: ReviewRequest = ReviewRequest(),
+    admin: User = AdminUser,
+    db: DBSession = None,
+):
+    """Resolve an SOS alert."""
+    return await update_sos_status(
+        alert_id,
+        SOSStatusUpdateRequest(status="resolved", notes=payload.notes),
+        admin,
+        db,
+    )
+
+
+@router.put("/sos/{alert_id}/close", response_model=SOSAlertItem)
+async def close_sos_alert(
+    alert_id: uuid.UUID,
+    payload: ReviewRequest = ReviewRequest(),
+    admin: User = AdminUser,
+    db: DBSession = None,
+):
+    """Close an SOS alert."""
+    return await update_sos_status(
+        alert_id,
+        SOSStatusUpdateRequest(status="closed", notes=payload.notes),
+        admin,
+        db,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +922,18 @@ async def get_stats(
         .where(Ride.status == RideStatusEnum.open)
     )).scalar()
     total_sos = (await db.execute(select(func.count(SOSAlert.alert_id)))).scalar()
+    open_sos = (await db.execute(
+        select(func.count(SOSAlert.alert_id))
+        .where(SOSAlert.status == SOSAlertStatusEnum.open)
+    )).scalar()
+    resolved_sos = (await db.execute(
+        select(func.count(SOSAlert.alert_id))
+        .where(SOSAlert.status == SOSAlertStatusEnum.resolved)
+    )).scalar()
+    closed_sos = (await db.execute(
+        select(func.count(SOSAlert.alert_id))
+        .where(SOSAlert.status == SOSAlertStatusEnum.closed)
+    )).scalar()
 
     return {
         "users": {
@@ -451,5 +951,8 @@ async def get_stats(
         },
         "sos": {
             "total_triggered": total_sos,
+            "open": open_sos,
+            "resolved": resolved_sos,
+            "closed": closed_sos,
         },
     }

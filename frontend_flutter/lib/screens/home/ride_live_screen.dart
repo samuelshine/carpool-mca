@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../auth/common_widgets.dart';
 import '../rides/rate_ride_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/demo_mode_service.dart';
 import '../../services/location_service.dart';
 import '../../services/ride_simulation_service.dart';
 import '../../services/routing_service.dart';
@@ -34,6 +35,7 @@ class RideLiveScreen extends StatefulWidget {
   final String? driverUserId;
   final String? driverName;
   final bool demoMode;
+  final bool initialDriverView;
 
   const RideLiveScreen({
     super.key,
@@ -48,6 +50,7 @@ class RideLiveScreen extends StatefulWidget {
     this.driverUserId,
     this.driverName,
     this.demoMode = false,
+    this.initialDriverView = false,
   });
 
   @override
@@ -143,7 +146,9 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
 
     if (!mounted) return;
 
-    if (!profileRes.success || !trackingRes.success || trackingRes.data is! Map) {
+    if (!profileRes.success ||
+        !trackingRes.success ||
+        trackingRes.data is! Map) {
       setState(() {
         _isLoading = false;
         _errorMessage =
@@ -227,12 +232,15 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     final vehicle = tracking['vehicle'];
     final viewerParticipant = tracking['viewer_participant'];
 
-    _driverUserId =
-        driver is Map ? driver['user_id']?.toString() : widget.driverUserId;
-    _driverName =
-        driver is Map ? driver['full_name']?.toString() : widget.driverName;
-    _vehicleNumber =
-        vehicle is Map ? vehicle['vehicle_number']?.toString() : null;
+    _driverUserId = driver is Map
+        ? driver['user_id']?.toString()
+        : widget.driverUserId;
+    _driverName = driver is Map
+        ? driver['full_name']?.toString()
+        : widget.driverName;
+    _vehicleNumber = vehicle is Map
+        ? vehicle['vehicle_number']?.toString()
+        : null;
 
     _rideStatus = tracking['status']?.toString() ?? 'open';
     _rideStartLatLng =
@@ -278,7 +286,10 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
 
     try {
       if (pickupTarget != null) {
-        final toPickup = await RoutingService.getRoute(routeStart, pickupTarget);
+        final toPickup = await RoutingService.getRoute(
+          routeStart,
+          pickupTarget,
+        );
         if (mounted) {
           _prePickupRoute = toPickup.points;
         }
@@ -329,20 +340,21 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     }
 
     _locationSubscription?.cancel();
-    _locationSubscription = LocationService.getPositionStream(
-      distanceFilter: 15,
-    ).listen((position) async {
-      if (!mounted || widget.rideId == null) return;
+    _locationSubscription =
+        LocationService.getPositionStream(distanceFilter: 15).listen((
+          position,
+        ) async {
+          if (!mounted || widget.rideId == null) return;
 
-      setState(() => _driverPosition = position);
-      _recalculateProgress();
+          setState(() => _driverPosition = position);
+          _recalculateProgress();
 
-      await RideApiService.updateDriverLocation(
-        widget.rideId!,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-    });
+          await RideApiService.updateDriverLocation(
+            widget.rideId!,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+        });
   }
 
   Future<void> _stopDriverLocationSharing({required bool clearRemote}) async {
@@ -362,7 +374,7 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _isDriverView = false;
+      _isDriverView = widget.initialDriverView;
       _driverName = widget.driverName ?? 'Demo Driver';
       _driverUserId = widget.driverUserId;
       _pickupOtp = _demoPickupOtp;
@@ -375,8 +387,14 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     );
 
     try {
-      final toPickup = await RoutingService.getRoute(driverStart, widget.fromLatLng);
-      final toDest = await RoutingService.getRoute(widget.fromLatLng, widget.toLatLng);
+      final toPickup = await RoutingService.getRoute(
+        driverStart,
+        widget.fromLatLng,
+      );
+      final toDest = await RoutingService.getRoute(
+        widget.fromLatLng,
+        widget.toLatLng,
+      );
 
       if (!mounted) return;
 
@@ -578,7 +596,10 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
 
     if (!res.success) {
       setState(() => _isSubmittingStatus = false);
-      _showSnackBar(res.error ?? 'Unable to update ride status.', isError: true);
+      _showSnackBar(
+        res.error ?? 'Unable to update ride status.',
+        isError: true,
+      );
       return;
     }
 
@@ -753,61 +774,6 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     _showSnackBar('SOS noted. Demo mode does not notify real contacts.');
   }
 
-  Future<void> _openRating() async {
-    if (_hasRealRide && widget.rideId != null) {
-      if (_isDriverView) {
-        final singlePassenger = _participants.length == 1 ? _participants.first : null;
-        final passengerId = singlePassenger?['user_id']?.toString();
-        final passengerName =
-            singlePassenger?['full_name']?.toString() ?? 'Passenger';
-
-        if (passengerId == null) {
-          _showSnackBar(
-            'Passenger rating needs a single confirmed rider for this flow.',
-            isError: true,
-          );
-          return;
-        }
-
-        if (!mounted) return;
-        await Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => RateRideScreen(
-              rideId: widget.rideId!,
-              ratedUserId: passengerId,
-              ratedUserName: passengerName,
-              isDriver: false,
-            ),
-          ),
-        );
-        return;
-      }
-
-      final ratedUserId = _driverUserId ?? widget.driverUserId;
-      if (ratedUserId == null) {
-        _showSnackBar('Driver details are missing for rating.', isError: true);
-        return;
-      }
-
-      if (!mounted) return;
-      await Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RateRideScreen(
-            rideId: widget.rideId!,
-            ratedUserId: ratedUserId,
-            ratedUserName: _effectiveDriverName,
-            isDriver: true,
-          ),
-        ),
-      );
-      return;
-    }
-
-    _showSnackBar('Rating is skipped in demo mode.');
-  }
-
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -828,7 +794,8 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     return LatLng(lat.toDouble(), lng.toDouble());
   }
 
-  String get _effectiveDriverName => _driverName ?? widget.driverName ?? 'Driver';
+  String get _effectiveDriverName =>
+      _driverName ?? widget.driverName ?? 'Driver';
 
   void _fitMapToCurrentContext() {
     if (_hasFittedMap) return;
@@ -958,9 +925,7 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.1,
-                    color: _isDriverView
-                        ? const Color(0xFF6366F1)
-                        : kPrimary,
+                    color: _isDriverView ? const Color(0xFF6366F1) : kPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1019,7 +984,8 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
   }
 
   Widget _buildStatusCard(Color cardColor) {
-    final pickupLabel = _isDriverView && _nextPendingParticipant?['pickup_address'] != null
+    final pickupLabel =
+        _isDriverView && _nextPendingParticipant?['pickup_address'] != null
         ? _nextPendingParticipant!['pickup_address'].toString()
         : widget.fromLocation;
 
@@ -1228,7 +1194,9 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
                           border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                              color: const Color(
+                                0xFF6366F1,
+                              ).withValues(alpha: 0.3),
                               blurRadius: 10,
                             ),
                           ],
@@ -1300,19 +1268,21 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
 
   Widget _buildPhaseAction() {
     return switch (_currentPhase) {
-      _RideLivePhase.waitingDriverStart => _isDriverView
-          ? _buildDriverReadyToStart()
-          : _buildRiderWaitingToStart(),
-      _RideLivePhase.driverToPickup => _isDriverView
-          ? _buildDriverNavigatingToPickup()
-          : _buildRiderWaitingForDriver(),
-      _RideLivePhase.pickupReached => _isDriverView
-          ? _buildDriverOtpEntry()
-          : _buildRiderShowOtp(),
+      _RideLivePhase.waitingDriverStart =>
+        _isDriverView
+            ? _buildDriverReadyToStart()
+            : _buildRiderWaitingToStart(),
+      _RideLivePhase.driverToPickup =>
+        _isDriverView
+            ? _buildDriverNavigatingToPickup()
+            : _buildRiderWaitingForDriver(),
+      _RideLivePhase.pickupReached =>
+        _isDriverView ? _buildDriverOtpEntry() : _buildRiderShowOtp(),
       _RideLivePhase.pickupConfirmed => _buildPickupConfirmed(),
-      _RideLivePhase.enRoute => _isDriverView
-          ? _buildDriverNavigatingToDestination()
-          : _buildRiderEnRoute(),
+      _RideLivePhase.enRoute =>
+        _isDriverView
+            ? _buildDriverNavigatingToDestination()
+            : _buildRiderEnRoute(),
       _RideLivePhase.completed => _buildRideComplete(),
       _RideLivePhase.cancelled => _buildRideCancelled(),
     };
@@ -1535,7 +1505,9 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Icon(Icons.check, color: Colors.white, size: 24),
@@ -1783,6 +1755,35 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
     );
   }
 
+  Future<void> _openRating() async {
+    if (_isDriverView) {
+      _showSnackBar(
+        _isDemoMode
+            ? 'Driver-side rating is available from the demo Activity screen.'
+            : 'Driver ratings are available from your Activity history.',
+      );
+      return;
+    }
+
+    if (_isDemoMode) {
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RateRideScreen(
+            rideId: widget.rideId ?? 'demo-history-completed-001',
+            ratedUserId: _driverUserId ?? DemoModeData.driverUserId,
+            ratedUserName: _effectiveDriverName,
+            isDriver: true,
+            demoMode: true,
+          ),
+        ),
+      );
+      return;
+    }
+
+    _showSnackBar('Open Activity to submit your ride rating.');
+  }
+
   Widget _buildRideCancelled() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1813,15 +1814,12 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
 
   String _titleForPhase() {
     return switch (_currentPhase) {
-      _RideLivePhase.waitingDriverStart => _isDriverView
-          ? 'Ready to Start'
-          : 'Waiting for Driver',
-      _RideLivePhase.driverToPickup => _isDriverView
-          ? 'Navigate to Pickup'
-          : 'Driver Approaching',
-      _RideLivePhase.pickupReached => _isDriverView
-          ? 'Verify Rider'
-          : 'Driver Arrived',
+      _RideLivePhase.waitingDriverStart =>
+        _isDriverView ? 'Ready to Start' : 'Waiting for Driver',
+      _RideLivePhase.driverToPickup =>
+        _isDriverView ? 'Navigate to Pickup' : 'Driver Approaching',
+      _RideLivePhase.pickupReached =>
+        _isDriverView ? 'Verify Rider' : 'Driver Arrived',
       _RideLivePhase.pickupConfirmed => 'Pickup Confirmed',
       _RideLivePhase.enRoute => 'En Route',
       _RideLivePhase.completed => 'Arrived',
@@ -1859,10 +1857,8 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
       _RideLivePhase.waitingDriverStart ||
       _RideLivePhase.driverToPickup ||
       _RideLivePhase.pickupReached => 28.0,
-      _RideLivePhase.pickupConfirmed ||
-      _RideLivePhase.enRoute => 32.0,
-      _RideLivePhase.completed ||
-      _RideLivePhase.cancelled => 1.0,
+      _RideLivePhase.pickupConfirmed || _RideLivePhase.enRoute => 32.0,
+      _RideLivePhase.completed || _RideLivePhase.cancelled => 1.0,
     };
 
     return max(1, ((distanceKm / speedKmh) * 60).round());

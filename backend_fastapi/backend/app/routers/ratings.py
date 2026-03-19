@@ -14,6 +14,7 @@ from core.deps import DBSession, CurrentUser
 from db.models.ratings import Rating
 from db.models.rides import Ride
 from db.models.ride_participants import RideParticipant
+from db.enums import RideStatusEnum
 from schemas.ratings import RatingCreate, RatingRead, UserRatingSummary
 
 
@@ -34,6 +35,12 @@ async def submit_rating(
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
 
+    if ride.status != RideStatusEnum.completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Ratings can only be submitted after the ride is completed",
+        )
+
     # Prevent self-rating
     if payload.rated_user_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot rate yourself")
@@ -49,6 +56,25 @@ async def submit_rating(
         )
         if not p_result.scalar_one_or_none():
             raise HTTPException(status_code=403, detail="You were not part of this ride")
+
+    if is_driver:
+        target_result = await db.execute(
+            select(RideParticipant).where(
+                RideParticipant.ride_id == ride_id,
+                RideParticipant.user_id == payload.rated_user_id,
+            )
+        )
+        if not target_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Drivers can only rate confirmed passengers from this ride",
+            )
+    else:
+        if payload.rated_user_id != ride.driver_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Passengers can only rate the driver for this ride",
+            )
 
     # Check for duplicate rating
     existing = await db.execute(

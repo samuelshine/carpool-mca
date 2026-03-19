@@ -2,6 +2,8 @@
 
 This folder is a code-derived reference for the current state of the `carpool-mca` repository. It is intended to make future work faster by keeping the important system context in one place.
 
+Last reviewed: 2026-03-19
+
 ## What is in this folder
 
 - `tech-stack.md`: languages, frameworks, packages, infrastructure, and external services
@@ -25,6 +27,6 @@ The repo currently contains three product surfaces:
 ## Important context for later tasks
 
 - The backend is the most complete source of truth for business logic and persistence.
-- The Flutter app mixes real API-backed flows with local/demo-only UI flows.
-- Several screens and service wrappers still look like prototypes or partial integrations, so future work should confirm whether a flow is expected to be production-backed or only mocked in the UI.
+- The Flutter app still mixes real API-backed flows with local/demo-only UI flows, but the main ride discovery, create-ride, history, verification, and live-ride paths are now more tightly coupled to backend APIs than before.
+- Several screens and service wrappers still need careful interpretation, especially where a canonical backend-backed flow now coexists with older compatibility wrappers or demo screens.
 - The backend contains some models and routes that are scaffolded but not fully surfaced in the frontend yet.

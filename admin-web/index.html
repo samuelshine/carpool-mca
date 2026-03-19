@@ -3,27 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>UniRide Admin</title>
+  <meta name="uniride-api-base" content="" />
+  <title>UniRide Admin Console</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- LOGIN PAGE -->
   <div id="login-page" class="page active">
-    <div class="login-container">
-      <div class="login-brand">
-        <div class="brand-logo">🚗</div>
-        <h1>UniRide Admin</h1>
-        <p>Christ University Carpooling Platform</p>
+    <div class="login-shell">
+      <div class="login-hero">
+        <div class="hero-badge">UniRide Ops</div>
+        <h1>Admin console for live operations and platform trust.</h1>
+        <p>Review users, triage verifications, and resolve SOS alerts from one place.</p>
+        <div class="hero-points">
+          <div class="hero-point">Live admin dashboard</div>
+          <div class="hero-point">Verification review queue</div>
+          <div class="hero-point">SOS incident triage</div>
+        </div>
       </div>
 
       <div class="login-card">
-        <h2>Sign In</h2>
-        <p class="login-sub">Enter your registered admin phone number</p>
+        <h2>Admin Sign In</h2>
+        <p class="login-sub">Use your registered admin phone number to access the console.</p>
 
-        <!-- Step 1: Phone -->
         <div id="step-phone">
           <div class="form-group">
-            <label>Phone Number</label>
+            <label for="phone-input">Phone number</label>
             <div class="phone-input">
               <span class="country-code">+91</span>
               <input type="tel" id="phone-input" placeholder="9876543210" maxlength="10" />
@@ -33,79 +37,135 @@
           <p id="phone-error" class="error-msg hidden"></p>
         </div>
 
-        <!-- Step 2: OTP -->
         <div id="step-otp" class="hidden">
           <p class="otp-hint">Enter the 6-digit OTP sent to <strong id="otp-phone-display"></strong></p>
           <div class="form-group">
-            <label>OTP</label>
+            <label for="otp-input">OTP</label>
             <input type="text" id="otp-input" placeholder="123456" maxlength="6" inputmode="numeric" />
           </div>
-          <button class="btn-primary" id="verify-otp-btn" onclick="verifyOtp()">Verify & Login</button>
-          <button class="btn-ghost" onclick="backToPhone()">← Change Number</button>
+          <button class="btn-primary" id="verify-otp-btn" onclick="verifyOtp()">Verify and continue</button>
+          <button class="btn-ghost" onclick="backToPhone()">Change number</button>
           <p id="otp-error" class="error-msg hidden"></p>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- MAIN DASHBOARD -->
   <div id="main-page" class="page hidden">
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-logo small">🚗</div>
-        <span>UniRide<br /><small>Admin</small></span>
+        <div class="brand-mark">U</div>
+        <div>
+          <div class="brand-title">UniRide Admin</div>
+          <div class="brand-sub">Operations Console</div>
+        </div>
       </div>
+
       <nav class="sidebar-nav">
-        <a href="#" class="nav-item active" onclick="showSection('dashboard', this)">
-          <span class="icon">📊</span> Dashboard
+        <a href="#" class="nav-item active" onclick="showSection('dashboard', this); return false;">
+          <span class="nav-icon">Dashboard</span>
+          <span class="nav-meta" id="nav-open-sos">0 open</span>
         </a>
-        <a href="#" class="nav-item" onclick="showSection('users', this)">
-          <span class="icon">👥</span> Users
+        <a href="#" class="nav-item" onclick="showSection('users', this); return false;">
+          <span class="nav-icon">Users</span>
+          <span class="nav-meta" id="nav-users-count">0</span>
         </a>
-        <a href="#" class="nav-item" onclick="showSection('verifications', this)">
-          <span class="icon">✅</span> Verifications
+        <a href="#" class="nav-item" onclick="showSection('verifications', this); return false;">
+          <span class="nav-icon">Verifications</span>
+          <span class="nav-meta" id="nav-pending-verifications">0 pending</span>
         </a>
-        <a href="#" class="nav-item" onclick="showSection('sos', this)">
-          <span class="icon">🆘</span> SOS Alerts
+        <a href="#" class="nav-item" onclick="showSection('sos', this); return false;">
+          <span class="nav-icon">SOS Desk</span>
+          <span class="nav-meta nav-meta-alert" id="nav-sos-status">Needs attention</span>
         </a>
       </nav>
-      <button class="btn-logout" onclick="logout()">Sign Out</button>
+
+      <div class="sidebar-footer">
+        <div class="env-chip" id="api-base-label">API: http://localhost:8000</div>
+        <button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
     </aside>
 
-    <!-- Content Area -->
     <main class="content">
-      <!-- Dashboard Section -->
-      <section id="section-dashboard" class="section active">
-        <div class="section-header">
-          <h2>Dashboard</h2>
-          <button class="btn-refresh" onclick="loadStats()">↻ Refresh</button>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="topbar-eyebrow">Operations overview</p>
+          <h1 id="topbar-title">Dashboard</h1>
         </div>
-        <div class="stats-grid" id="stats-grid">
-          <div class="stat-card loading">Loading...</div>
+        <div class="topbar-actions">
+          <div class="status-pill status-pill-live" id="connection-pill">Connected</div>
+          <button class="btn-refresh" id="section-refresh-btn" onclick="refreshCurrentSection()">Refresh</button>
+        </div>
+      </header>
+
+      <section id="section-dashboard" class="section active">
+        <div class="section-intro">
+          <div>
+            <h2>Platform snapshot</h2>
+            <p>Keep an eye on riders, trust workflows, and urgent support events.</p>
+          </div>
+        </div>
+
+        <div id="stats-grid" class="stats-grid">
+          <div class="stat-card loading">Loading dashboard...</div>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Verification queue</h3>
+                <p>Who needs review right now.</p>
+              </div>
+            </div>
+            <div id="dashboard-verifications" class="list-stack">
+              <div class="empty-state compact">Loading verification queue...</div>
+            </div>
+          </article>
+
+          <article class="panel panel-alert">
+            <div class="panel-header">
+              <div>
+                <h3>Open SOS alerts</h3>
+                <p>Most recent unresolved incidents.</p>
+              </div>
+            </div>
+            <div id="dashboard-sos" class="list-stack">
+              <div class="empty-state compact">Loading SOS incidents...</div>
+            </div>
+          </article>
         </div>
       </section>
 
-      <!-- Users Section -->
       <section id="section-users" class="section hidden">
-        <div class="section-header">
-          <h2>Users</h2>
-          <button class="btn-refresh" onclick="loadUsers()">↻ Refresh</button>
+        <div class="section-intro">
+          <div>
+            <h2>User management</h2>
+            <p>Review account status, verification state, and quickly disable abusive users.</p>
+          </div>
         </div>
-        <div class="search-bar">
-          <input type="text" id="user-search" placeholder="Search by name or phone..." oninput="filterUsers()" />
+
+        <div class="toolbar">
+          <input
+            type="text"
+            id="user-search"
+            class="search-input"
+            placeholder="Search by name, phone, or email"
+            oninput="filterUsers()"
+          />
         </div>
-        <div class="table-container">
+
+        <div class="table-shell">
           <table id="users-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Email</th>
-                <th>Verified</th>
+                <th>Identity</th>
                 <th>Driver</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="users-tbody">
@@ -115,45 +175,104 @@
         </div>
       </section>
 
-      <!-- Verifications Section -->
       <section id="section-verifications" class="section hidden">
-        <div class="section-header">
-          <h2>Verifications</h2>
-          <button class="btn-refresh" onclick="loadVerifications()">↻ Refresh</button>
+        <div class="section-intro">
+          <div>
+            <h2>Verification review</h2>
+            <p>Work through submitted identity and driver checks.</p>
+          </div>
         </div>
-        <div class="tabs">
-          <button class="tab active" onclick="switchTab('identity', this)">Identity</button>
-          <button class="tab" onclick="switchTab('driver', this)">Driver</button>
+
+        <div class="toolbar">
+          <div class="tabs">
+            <button class="tab active" onclick="switchTab('identity', this)">Identity</button>
+            <button class="tab" onclick="switchTab('driver', this)">Driver</button>
+          </div>
         </div>
+
         <div id="verifications-list" class="cards-grid">
-          <p class="empty-state">Loading...</p>
+          <p class="empty-state">Loading verification queue...</p>
         </div>
       </section>
 
-      <!-- SOS Section -->
       <section id="section-sos" class="section hidden">
-        <div class="section-header">
-          <h2>SOS Alerts</h2>
-          <button class="btn-refresh" onclick="loadSos()">↻ Refresh</button>
+        <div class="section-intro">
+          <div>
+            <h2>SOS incident desk</h2>
+            <p>Track open alerts, review context, and resolve or close incidents with notes.</p>
+          </div>
         </div>
-        <div class="table-container">
-          <table id="sos-table">
-            <thead>
-              <tr>
-                <th>Alert ID</th>
-                <th>User ID</th>
-                <th>Ride ID</th>
-                <th>Time</th>
-                <th>Location</th>
-              </tr>
-            </thead>
-            <tbody id="sos-tbody">
-              <tr><td colspan="5" class="loading-row">Loading...</td></tr>
-            </tbody>
-          </table>
+
+        <div id="sos-stats-grid" class="sos-stats-grid">
+          <div class="stat-card loading">Loading SOS stats...</div>
+        </div>
+
+        <div class="toolbar toolbar-sos">
+          <div class="filter-group">
+            <button class="filter-chip active" data-filter="open" onclick="setSosFilter('open', this)">Open</button>
+            <button class="filter-chip" data-filter="resolved" onclick="setSosFilter('resolved', this)">Resolved</button>
+            <button class="filter-chip" data-filter="closed" onclick="setSosFilter('closed', this)">Closed</button>
+            <button class="filter-chip" data-filter="all" onclick="setSosFilter('all', this)">All</button>
+          </div>
+          <div class="toolbar-note" id="sos-toolbar-note">Showing unresolved incidents first.</div>
+        </div>
+
+        <div class="sos-layout">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Incident queue</h3>
+                <p>Select an alert to inspect details and take action.</p>
+              </div>
+            </div>
+            <div class="table-shell">
+              <table id="sos-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>User</th>
+                    <th>Ride</th>
+                    <th>Triggered</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody id="sos-tbody">
+                  <tr><td colspan="5" class="loading-row">Loading SOS incidents...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel sos-detail-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Incident details</h3>
+                <p>Review context and record the outcome.</p>
+              </div>
+            </div>
+            <div id="sos-detail" class="sos-detail">
+              <div class="empty-state compact">Select an SOS alert to view details.</div>
+            </div>
+          </article>
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="user-detail-modal" class="modal-shell hidden" onclick="closeUserDetailIfBackdrop(event)">
+    <div class="modal-backdrop"></div>
+    <aside class="detail-drawer" aria-label="User detail drawer">
+      <div class="drawer-header">
+        <div>
+          <div class="eyebrow">Support and moderation</div>
+          <h2>User detail</h2>
+        </div>
+        <button class="btn-ghost btn-inline" onclick="closeUserDetail()">Close</button>
+      </div>
+      <div id="user-detail-content" class="drawer-content">
+        <div class="empty-state compact">Select a user to inspect account and activity details.</div>
+      </div>
+    </aside>
   </div>
 
   <div id="toast" class="toast hidden"></div>
