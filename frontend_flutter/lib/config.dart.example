@@ -4,4 +4,6 @@
 /// Usage:
 ///   cp lib/config.dart.example lib/config.dart
 ///   # then edit config.dart with your current Pinggy/ngrok URL
+/// Production builds can override this with:
+///   flutter build apk --dart-define=UNIRIDE_API_BASE=https://api.example.com
 const String kBaseUrl = 'https://your-tunnel-url.a.free.pinggy.link';

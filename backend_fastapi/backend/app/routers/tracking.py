@@ -2,10 +2,11 @@
 Tracking Router — Provides ride tracking info for live tracking UI.
 
 GET  /tracking/{ride_id}           — Returns current ride state for the live tracking screen.
-POST /tracking/{ride_id}/location  — Driver updates their live location (stored in-memory/cache).
+POST /tracking/{ride_id}/location  — Driver updates their live location (stored on the ride record).
 DELETE /tracking/{ride_id}/location — Clear driver's latest live location.
 """
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -18,12 +19,6 @@ from db.models.ride_participants import RideParticipant
 
 
 router = APIRouter(prefix="/tracking", tags=["Tracking"])
-
-# ---------------------------------------------------------------------------
-# In-memory driver location store (sufficient for demo + single-server setup)
-# Replace with Redis for multi-instance production
-# ---------------------------------------------------------------------------
-_driver_locations: dict[str, dict] = {}
 
 
 class LocationUpdate(BaseModel):
@@ -96,8 +91,18 @@ async def get_tracking_info(
             "vehicle_type": ride.vehicle.vehicle_type.value,
         }
 
-    # Get live driver location (from in-memory store, updated by driver app)
-    live_location = _driver_locations.get(str(ride_id))
+    live_location = None
+    if (
+        ride.driver_last_latitude is not None and
+        ride.driver_last_longitude is not None
+    ):
+        live_location = {
+            "latitude": ride.driver_last_latitude,
+            "longitude": ride.driver_last_longitude,
+            "updated_at": ride.driver_location_updated_at.isoformat()
+            if ride.driver_location_updated_at
+            else None,
+        }
 
     return {
         "ride_id": str(ride.ride_id),
@@ -138,13 +143,14 @@ async def update_driver_location(
     result = await db.execute(
         select(Ride).where(Ride.ride_id == ride_id, Ride.driver_id == user.user_id)
     )
-    if not result.scalar_one_or_none():
+    ride = result.scalar_one_or_none()
+    if not ride:
         raise HTTPException(status_code=403, detail="Not your ride")
 
-    _driver_locations[str(ride_id)] = {
-        "latitude": payload.latitude,
-        "longitude": payload.longitude,
-    }
+    ride.driver_last_latitude = payload.latitude
+    ride.driver_last_longitude = payload.longitude
+    ride.driver_location_updated_at = datetime.now(timezone.utc)
+    await db.flush()
     return {"message": "Location updated"}
 
 
@@ -158,8 +164,12 @@ async def clear_driver_location(
     result = await db.execute(
         select(Ride).where(Ride.ride_id == ride_id, Ride.driver_id == user.user_id)
     )
-    if not result.scalar_one_or_none():
+    ride = result.scalar_one_or_none()
+    if not ride:
         raise HTTPException(status_code=403, detail="Not your ride")
 
-    _driver_locations.pop(str(ride_id), None)
+    ride.driver_last_latitude = None
+    ride.driver_last_longitude = None
+    ride.driver_location_updated_at = None
+    await db.flush()
     return {"message": "Location cleared"}

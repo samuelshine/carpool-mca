@@ -445,126 +445,194 @@ class _TopCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final leftWidth = (w - 36) * 0.52;
-    final rightWidth = (w - 36) * 0.44;
+    const horizontalGap = 14.0;
+    final availableWidth = (w - 36 - horizontalGap).clamp(0.0, double.infinity);
+    final compactLayout = w < 360;
+    final leftWidth = availableWidth * 0.54;
+    final rightWidth = availableWidth * 0.46;
+
+    if (compactLayout) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 160,
+            child: _CommunityCard(compact: true),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: const [
+              Expanded(child: _DriverIconCard()),
+              SizedBox(width: 12),
+              Expanded(child: _SafetyInfoCard(compact: true)),
+            ],
+          ),
+        ],
+      );
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left image card
         SizedBox(
           width: leftWidth,
           height: 190,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Stack(
-              fit: StackFit.expand,
+          child: _CommunityCard(compact: false),
+        ),
+        const SizedBox(width: horizontalGap),
+        SizedBox(
+          width: rightWidth,
+          child: const Column(
+            children: [
+              _DriverIconCard(),
+              SizedBox(height: 12),
+              _SafetyInfoCard(compact: false),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CommunityCard extends StatelessWidget {
+  final bool compact;
+
+  const _CommunityCard({required this.compact});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/community.jpg',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: kPrimary.withValues(alpha: 0.2),
+              child: Icon(
+                Icons.people,
+                size: compact ? 52 : 60,
+                color: kPrimary,
+              ),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.black.withValues(alpha: 0.05),
+                  Colors.black.withValues(alpha: 0.55),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 14,
+            bottom: compact ? 14 : 18,
+            right: 12,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Image.asset(
-                  'assets/images/community.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: kPrimary.withValues(alpha: 0.2),
-                    child: Icon(Icons.people, size: 60, color: kPrimary),
+                Text(
+                  'Community',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: compact ? 12 : 14,
                   ),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.black.withValues(alpha: 0.05),
-                        Colors.black.withValues(alpha: 0.55),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
-                const Positioned(
-                  left: 14,
-                  bottom: 18,
-                  right: 12,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Community',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Join 5k+\nStudents',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          height: 1.1,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 4),
+                Text(
+                  compact ? 'Join 5k+ Students' : 'Join 5k+\nStudents',
+                  maxLines: compact ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: compact ? 20 : 22,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+        ],
+      ),
+    );
+  }
+}
 
-        const SizedBox(width: 14),
+class _DriverIconCard extends StatelessWidget {
+  const _DriverIconCard();
 
-        // Right stacked cards
-        SizedBox(
-          width: rightWidth,
-          child: Column(
-            children: [
-              Container(
-                height: 84,
-                decoration: BoxDecoration(
-                  color: kPrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: kPrimary.withValues(alpha: 0.08)),
-                ),
-                child: Center(
-                  child: Icon(Icons.directions_car, color: kPrimary, size: 34),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 94,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: kCardBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Safe Rides',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Verified campus emails\nonly.',
-                      style: TextStyle(color: kMuted, height: 1.25),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 84,
+      decoration: BoxDecoration(
+        color: kPrimary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kPrimary.withValues(alpha: 0.08)),
+      ),
+      child: Center(
+        child: Icon(Icons.directions_car, color: kPrimary, size: 34),
+      ),
+    );
+  }
+}
+
+class _SafetyInfoCard extends StatelessWidget {
+  final bool compact;
+
+  const _SafetyInfoCard({required this.compact});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: compact ? 84 : 100,
+      padding: EdgeInsets.all(compact ? 12 : 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kCardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Safe Rides',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 15 : 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: compact ? 2 : 4),
+          Text(
+            compact ? 'Verified only' : 'Verified campus emails\nonly.',
+            maxLines: compact ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: kMuted,
+              height: 1.15,
+              fontSize: compact ? 12 : 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -3,26 +3,29 @@ Async database session management.
 Uses SQLAlchemy 2.0 async engine with asyncpg driver.
 """
 import ssl
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from core.config import get_settings
 
 settings = get_settings()
 
-# Create SSL context for Supabase (skip certificate verification)
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
+connect_args = {
+    "server_settings": {"application_name": "carpool_backend"},
+}
 
-# Create async engine with SSL support for Supabase
-# Note: asyncpg accepts ssl context directly
+if settings.DB_SSL_REQUIRE:
+    ssl_context = ssl.create_default_context()
+    if not settings.DB_SSL_VERIFY:
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+    connect_args["ssl"] = ssl_context
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     future=True,
-    connect_args={
-        "ssl": ssl_context,
-        "server_settings": {"application_name": "carpool_backend"}
-    }
+    connect_args=connect_args,
 )
 
 # Session factory

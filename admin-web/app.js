@@ -14,7 +14,9 @@ function resolveApiBase() {
   return 'http://localhost:8000';
 }
 
-const API_BASE = resolveApiBase();
+let API_BASE = resolveApiBase();
+let refreshPromise = null;
+let autoRefreshHandle = null;
 
 const state = {
   accessToken: null,
@@ -39,6 +41,7 @@ window.addEventListener('load', () => {
     refreshCurrentSection();
   } else {
     updateApiBaseLabel();
+    probeBackendHealth();
   }
 });
 
@@ -53,6 +56,26 @@ function updateApiBaseLabel() {
   }
 }
 
+function configureApiBase() {
+  const nextValue = prompt('Enter the UniRide API base URL', API_BASE);
+  if (nextValue == null) return;
+
+  const normalized = nextValue.trim().replace(/\/+$/, '');
+  if (!normalized) {
+    localStorage.removeItem('uniride_admin_api_base');
+    API_BASE = resolveApiBase();
+  } else {
+    localStorage.setItem('uniride_admin_api_base', normalized);
+    API_BASE = normalized;
+  }
+
+  updateApiBaseLabel();
+  probeBackendHealth();
+  if (state.accessToken) {
+    refreshCurrentSection();
+  }
+}
+
 function apiHeaders(auth = false) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.accessToken) {
@@ -61,7 +84,7 @@ function apiHeaders(auth = false) {
   return headers;
 }
 
-async function apiFetch(path, options = {}, auth = true) {
+async function apiFetch(path, options = {}, auth = true, retryOnAuth = true) {
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       ...options,
@@ -80,6 +103,10 @@ async function apiFetch(path, options = {}, auth = true) {
     }
 
     if (auth && response.status === 401) {
+      const refreshed = retryOnAuth ? await tryRefreshAdminSession() : false;
+      if (refreshed) {
+        return apiFetch(path, options, auth, false);
+      }
       handleAuthExpired();
     }
 
@@ -105,6 +132,22 @@ async function apiFetch(path, options = {}, auth = true) {
 function setConnectionState(isConnected) {
   const pill = $('connection-pill');
   if (!pill) return;
+  if (typeof isConnected === 'string') {
+    pill.textContent =
+      isConnected === 'degraded'
+        ? 'Degraded'
+        : isConnected === 'offline'
+        ? 'Offline'
+        : 'Connected';
+    pill.className = `status-pill ${
+      isConnected === 'degraded'
+        ? 'status-pill-alert'
+        : isConnected === 'offline'
+        ? 'status-pill-offline'
+        : 'status-pill-live'
+    }`;
+    return;
+  }
   pill.textContent = isConnected ? 'Connected' : 'Offline';
   pill.className = `status-pill ${isConnected ? 'status-pill-live' : 'status-pill-offline'}`;
 }
@@ -113,11 +156,59 @@ function handleAuthExpired() {
   localStorage.removeItem('admin_access_token');
   localStorage.removeItem('admin_refresh_token');
   state.accessToken = null;
+  stopAutoRefresh();
   $('main-page').classList.add('hidden');
   $('main-page').classList.remove('active');
   $('login-page').classList.remove('hidden');
   $('login-page').classList.add('active');
   toast('Your admin session expired. Please sign in again.', true);
+  probeBackendHealth();
+}
+
+async function tryRefreshAdminSession() {
+  const refreshToken = localStorage.getItem('admin_refresh_token');
+  if (!refreshToken) return false;
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.access_token) {
+        return false;
+      }
+
+      state.accessToken = data.access_token;
+      localStorage.setItem('admin_access_token', data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('admin_refresh_token', data.refresh_token);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+async function probeBackendHealth() {
+  try {
+    const response = await fetch(`${API_BASE}/health/ready`);
+    if (response.ok) {
+      setConnectionState('connected');
+      return;
+    }
+    setConnectionState('degraded');
+  } catch (_) {
+    setConnectionState('offline');
+  }
 }
 
 async function sendOtp() {
@@ -213,10 +304,12 @@ function logout() {
   localStorage.removeItem('admin_access_token');
   localStorage.removeItem('admin_refresh_token');
   state.accessToken = null;
+  stopAutoRefresh();
   $('main-page').classList.add('hidden');
   $('main-page').classList.remove('active');
   $('login-page').classList.remove('hidden');
   $('login-page').classList.add('active');
+  probeBackendHealth();
 }
 
 function showMainPage() {
@@ -225,6 +318,23 @@ function showMainPage() {
   $('main-page').classList.remove('hidden');
   $('main-page').classList.add('active');
   updateApiBaseLabel();
+  startAutoRefresh();
+  probeBackendHealth();
+}
+
+function startAutoRefresh() {
+  if (autoRefreshHandle) return;
+  autoRefreshHandle = window.setInterval(() => {
+    if (!state.accessToken || document.visibilityState !== 'visible') return;
+    probeBackendHealth();
+    refreshCurrentSection();
+  }, 60000);
+}
+
+function stopAutoRefresh() {
+  if (!autoRefreshHandle) return;
+  window.clearInterval(autoRefreshHandle);
+  autoRefreshHandle = null;
 }
 
 function closeUserDetail() {

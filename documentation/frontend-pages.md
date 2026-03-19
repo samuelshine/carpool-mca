@@ -166,6 +166,11 @@ Integrations:
 - `GET /rides/`
 - `POST /rides/{ride_id}/request`
 
+Important note:
+
+- after booking, riders now see pending request state in `ActivityHistoryScreen`
+- pending requests can be withdrawn from the activity screen without backend admin help
+
 ### `RideLiveScreen`
 
 File: `frontend_flutter/lib/screens/home/ride_live_screen.dart`
@@ -344,6 +349,7 @@ Important note:
 
 - now backed by a current-user history endpoint instead of the generic open-rides list
 - supports active, requested, completed, and cancelled states across driver and rider roles
+- lets riders withdraw pending join requests directly from the requested tab
 
 ### `RideHistoryScreen`
 

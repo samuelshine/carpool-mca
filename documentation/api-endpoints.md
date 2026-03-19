@@ -10,6 +10,8 @@ Public utility endpoints:
   Health-style root response with app name and version.
 - `GET /health`
   Load balancer / uptime check.
+- `GET /health/ready`
+  Readiness probe with database connectivity check and resolved CORS origins.
 
 ## Authentication
 
@@ -221,6 +223,9 @@ Auth: bearer token required
   - optional `pickup_lng`
   - optional `pickup_address`
 
+- `DELETE /rides/{ride_id}/request`
+  Withdraw the current user’s pending join request for that ride.
+
 - `GET /rides/{ride_id}/requests`
   Driver-only list of pending ride requests.
 
@@ -264,6 +269,7 @@ Auth: bearer token required
   - `viewer_participant` includes the authenticated rider's `participant_id`,
     `pickup_otp`, `pickup_address`, and `is_picked_up`
   - this is the preferred source for real ride-live rider state
+  - live driver location is now stored on the ride record instead of in temporary in-memory server state
 
 - `POST /tracking/{ride_id}/location`
   Driver updates live location.

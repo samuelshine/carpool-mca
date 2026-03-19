@@ -1,20 +1,30 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 
+const String _dartDefineBaseUrl = String.fromEnvironment(
+  'UNIRIDE_API_BASE',
+  defaultValue: '',
+);
+
 /// Resolves the backend base URL from config.dart.
 /// On Android emulator you'd normally use 10.0.2.2, but when tunnelling
 /// (Pinggy / ngrok) the same public URL works on all platforms.
-String _resolveBaseUrl() => kBaseUrl;
+String _resolveBaseUrl() {
+  final overrideUrl = _dartDefineBaseUrl.trim();
+  final configuredUrl = kBaseUrl.trim();
+  final raw = overrideUrl.isNotEmpty ? overrideUrl : configuredUrl;
+  return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+}
 
 /// Base API service providing HTTP methods with auth headers and error handling.
 /// Supports refresh token rotation for persistent login.
 class ApiService {
-  // Android emulator uses 10.0.2.2 to reach host localhost
-  // For physical device, use your machine's IP address
   static final String baseUrl = _resolveBaseUrl();
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   // ----------------------------------------------------------------
   // Token storage helpers
@@ -133,21 +143,11 @@ class ApiService {
 
   /// HTTP GET request.
   static Future<ApiResponse> get(String path, {bool auth = false}) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl$path'),
-        headers: await _headers(auth: auth),
-      );
-      return ApiResponse.fromResponse(response);
-    } on SocketException {
-      return ApiResponse(
-        success: false,
-        statusCode: 0,
-        error: 'Cannot connect to server. Make sure the backend is running.',
-      );
-    } catch (e) {
-      return ApiResponse(success: false, statusCode: 0, error: e.toString());
-    }
+    return _send(
+      auth: auth,
+      requestBuilder: (headers) =>
+          http.get(Uri.parse('$baseUrl$path'), headers: headers),
+    );
   }
 
   /// HTTP POST request.
@@ -156,22 +156,14 @@ class ApiService {
     Map<String, dynamic>? body,
     bool auth = false,
   }) async {
-    try {
-      final response = await http.post(
+    return _send(
+      auth: auth,
+      requestBuilder: (headers) => http.post(
         Uri.parse('$baseUrl$path'),
-        headers: await _headers(auth: auth),
+        headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      );
-      return ApiResponse.fromResponse(response);
-    } on SocketException {
-      return ApiResponse(
-        success: false,
-        statusCode: 0,
-        error: 'Cannot connect to server. Make sure the backend is running.',
-      );
-    } catch (e) {
-      return ApiResponse(success: false, statusCode: 0, error: e.toString());
-    }
+      ),
+    );
   }
 
   /// HTTP PUT request.
@@ -180,37 +172,57 @@ class ApiService {
     Map<String, dynamic>? body,
     bool auth = true,
   }) async {
-    try {
-      final response = await http.put(
+    return _send(
+      auth: auth,
+      requestBuilder: (headers) => http.put(
         Uri.parse('$baseUrl$path'),
-        headers: await _headers(auth: auth),
+        headers: headers,
         body: body != null ? jsonEncode(body) : null,
-      );
-      return ApiResponse.fromResponse(response);
-    } on SocketException {
-      return ApiResponse(
-        success: false,
-        statusCode: 0,
-        error: 'Cannot connect to server. Make sure the backend is running.',
-      );
-    } catch (e) {
-      return ApiResponse(success: false, statusCode: 0, error: e.toString());
-    }
+      ),
+    );
   }
 
   /// HTTP DELETE request.
   static Future<ApiResponse> delete(String path, {bool auth = true}) async {
+    return _send(
+      auth: auth,
+      requestBuilder: (headers) =>
+          http.delete(Uri.parse('$baseUrl$path'), headers: headers),
+    );
+  }
+
+  static Future<ApiResponse> _send({
+    required bool auth,
+    required Future<http.Response> Function(Map<String, String> headers)
+    requestBuilder,
+  }) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl$path'),
-        headers: await _headers(auth: auth),
-      );
+      final response = await requestBuilder(
+        await _headers(auth: auth),
+      ).timeout(_requestTimeout);
+
+      if (auth && response.statusCode == 401) {
+        final refreshed = await refreshAccessToken();
+        if (refreshed) {
+          final retryResponse = await requestBuilder(
+            await _headers(auth: true),
+          ).timeout(_requestTimeout);
+          return ApiResponse.fromResponse(retryResponse);
+        }
+      }
+
       return ApiResponse.fromResponse(response);
     } on SocketException {
       return ApiResponse(
         success: false,
         statusCode: 0,
         error: 'Cannot connect to server. Make sure the backend is running.',
+      );
+    } on TimeoutException {
+      return ApiResponse(
+        success: false,
+        statusCode: 0,
+        error: 'The server took too long to respond. Please try again.',
       );
     } catch (e) {
       return ApiResponse(success: false, statusCode: 0, error: e.toString());
@@ -410,6 +422,11 @@ class RideApiService {
         if (pickupAddress != null) 'pickup_address': pickupAddress,
       },
     );
+  }
+
+  /// DELETE /rides/{rideId}/request — Rider cancels their pending request.
+  static Future<ApiResponse> cancelJoinRideRequest(String rideId) async {
+    return ApiService.delete('/rides/$rideId/request', auth: true);
   }
 
   /// GET /rides/{rideId}/requests — List pending requests (driver only).

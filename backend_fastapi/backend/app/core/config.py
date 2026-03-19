@@ -2,9 +2,11 @@
 Application configuration settings.
 Uses pydantic-settings for environment variable management.
 """
-from pydantic_settings import BaseSettings
 from functools import lru_cache
 import re
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -12,10 +14,15 @@ class Settings(BaseSettings):
     
     # App
     APP_NAME: str = "College Carpool API"
+    APP_VERSION: str = "1.0.0"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080"
     
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/carpool_db"
+    DB_SSL_REQUIRE: bool = True
+    DB_SSL_VERIFY: bool = True
     
     # JWT
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
@@ -61,10 +68,32 @@ class Settings(BaseSettings):
     # Driver/Vehicle Verification Service
     VERIFICATION_PROVIDER: str = "console"  # "console" | "surepass"
     VERIFICATION_API_KEY: str = ""
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        """Return parsed CORS origins from a comma-separated env var."""
+        raw = self.ALLOWED_ORIGINS.strip()
+        if not raw:
+            return []
+        if raw == "*":
+            return ["*"]
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
     
     def is_valid_college_email(self, email: str) -> bool:
         """Check if email matches college email pattern."""
         return bool(re.match(self.COLLEGE_EMAIL_PATTERN, email.lower()))
+
+    @model_validator(mode="after")
+    def validate_production_settings(self):
+        """Fail fast on insecure production defaults."""
+        if self.ENVIRONMENT.lower() == "production":
+            if self.JWT_SECRET_KEY == "your-super-secret-key-change-in-production":
+                raise ValueError("JWT_SECRET_KEY must be set to a secure value in production")
+            if "user:password@localhost/carpool_db" in self.DATABASE_URL:
+                raise ValueError("DATABASE_URL must be configured for production")
+            if self.ALLOWED_ORIGINS.strip() == "*":
+                raise ValueError("ALLOWED_ORIGINS cannot be wildcard in production")
+        return self
     
     class Config:
         env_file = (".env", "../.env")

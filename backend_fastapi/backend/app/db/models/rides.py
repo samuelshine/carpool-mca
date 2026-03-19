@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Integer, Date, Time, Enum, DECIMAL, TIMESTAMP, ForeignKey, String
+    Integer, Date, Time, Enum, DECIMAL, TIMESTAMP, ForeignKey, String, Float
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -44,6 +44,11 @@ class Ride(Base):
         Enum(RideStatusEnum), default=RideStatusEnum.open
     )
     pickup_otp: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    driver_last_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    driver_last_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    driver_location_updated_at: Mapped[str | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     created_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()

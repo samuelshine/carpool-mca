@@ -9,6 +9,7 @@ Endpoints:
   GET    /rides/{ride_id}                    — Get ride details
   PUT    /rides/{ride_id}/status             — Update ride status
   POST   /rides/{ride_id}/request            — Rider requests to join (with pickup loc)
+  DELETE /rides/{ride_id}/request            — Rider cancels their pending request
   GET    /rides/{ride_id}/requests           — List pending requests (driver)
   PUT    /rides/{ride_id}/requests/{req_id}  — Accept/reject request
   POST   /rides/{ride_id}/verify-otp         — Verify rider's pickup OTP
@@ -384,6 +385,32 @@ async def request_join_ride(
     await db.flush()
     await db.refresh(req)
     return req
+
+
+@router.delete("/{ride_id}/request", status_code=status.HTTP_200_OK)
+async def cancel_join_request(
+    ride_id: uuid.UUID,
+    user: EmailVerifiedUser,
+    db: DBSession,
+):
+    """Allow a rider to withdraw their own pending join request."""
+    result = await db.execute(
+        select(RideRequest).where(
+            RideRequest.ride_id == ride_id,
+            RideRequest.passenger_id == user.user_id,
+            RideRequest.request_status == RideRequestStatusEnum.pending,
+        )
+    )
+    request_obj = result.scalar_one_or_none()
+    if not request_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pending ride request not found",
+        )
+
+    await db.delete(request_obj)
+    await db.flush()
+    return {"message": "Ride request cancelled"}
 
 
 # ─── List pending requests (driver) ────────────────────────────────────────

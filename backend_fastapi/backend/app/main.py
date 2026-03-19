@@ -1,11 +1,12 @@
 """
 College Carpool API - Main Application Entry Point
 """
-import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from core.config import get_settings
+from core.deps import DBSession
 # Import models to ensure they are registered with SQLAlchemy
 from db.models import users, vehicles, rides, ride_requests, ride_participants, ride_history, driver_profiles
 from db.models import identity_verifications, driver_verifications, saved_addresses, college_students
@@ -27,27 +28,17 @@ settings = get_settings()
 app = FastAPI(
     title=settings.APP_NAME,
     description="A secure carpooling platform for college students",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# ---------------------------------------------------------------------------
-# CORS — restrict to configured origins in production
-# Set ALLOWED_ORIGINS env var as comma-separated list, e.g.:
-#   ALLOWED_ORIGINS=https://myapp.onrender.com,http://localhost:3000
-# Defaults to wildcard for local development only.
-# ---------------------------------------------------------------------------
-_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
-if _raw_origins == "*":
-    allowed_origins = ["*"]
-else:
-    allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+allowed_origins = settings.allowed_origins_list
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials="*" not in allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -75,11 +66,38 @@ async def root():
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
-        "version": "1.0.0"
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
     }
 
 
 @app.get("/health")
 async def health():
     """Health check for load balancers."""
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+@app.get("/health/ready")
+async def readiness(db: DBSession):
+    """Readiness probe that verifies the API can reach the database."""
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database readiness check failed: {exc}",
+        ) from exc
+
+    return {
+        "status": "ready",
+        "database": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "cors_origins": settings.allowed_origins_list,
+    }

@@ -115,6 +115,54 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
     });
   }
 
+  Future<void> _cancelPendingRequest(Map<String, dynamic> ride) async {
+    if (widget.demoMode) return;
+
+    final rideId = ride['ride_id']?.toString();
+    if (rideId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Withdraw request?'),
+        content: const Text(
+          'This will remove your pending join request for this ride.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep request'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final response = await RideApiService.cancelJoinRideRequest(rideId);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response.success
+              ? 'Ride request withdrawn.'
+              : (response.error ?? 'Unable to withdraw ride request.'),
+        ),
+        backgroundColor: response.success ? null : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    if (response.success) {
+      await _loadRides();
+    }
+  }
+
   bool _hasRatedUser(String rideId, String ratedUserId) {
     if (_currentUserId == null) return false;
     final ratings = _rideRatings[rideId] ?? const <Map<String, dynamic>>[];
@@ -524,6 +572,8 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
     final requestStatus = ride['request_status']?.toString();
     final isActive = historyState == 'active';
     final isCompleted = historyState == 'completed';
+    final isPendingRequest =
+        historyState == 'requested' && requestStatus == 'pending';
 
     final statusColor = switch (historyState) {
       'active' => kPrimary,
@@ -704,6 +754,26 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen>
             const Divider(height: 1),
             const SizedBox(height: 14),
             _buildRatingAction(ride),
+          ] else if (isPendingRequest) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Your request is still pending driver review.',
+                    style: TextStyle(color: kMuted, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () => _cancelPendingRequest(ride),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Withdraw'),
+                ),
+              ],
+            ),
           ],
         ],
       ),

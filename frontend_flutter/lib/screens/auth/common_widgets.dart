@@ -391,12 +391,16 @@ class AuthOutlinedButton extends StatelessWidget {
         side: const BorderSide(color: kCardBorder),
         foregroundColor: const Color(0xFF374151),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 8)],
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 8)],
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
       ),
     );
   }

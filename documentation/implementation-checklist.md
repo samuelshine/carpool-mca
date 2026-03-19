@@ -33,7 +33,8 @@ Implementation note:
 - Route preview now opens a matching-rides flow instead of jumping directly into a demo ride.
 - Riders browse destination-compatible open rides from the route preview, then submit a real join request.
 - Pending is shown immediately after submission, and later states are visible in the backend-backed activity/history flow.
-- Remaining gap: there is still no dedicated request-status screen or rider-side cancellation action.
+- Riders can now withdraw pending requests directly from the backend-backed activity/history screen.
+- Remaining gap: there is still no dedicated request-status detail screen, and withdrawn requests are removed rather than preserved as a separate cancelled-history state.
 
 References:
 
@@ -99,6 +100,7 @@ Implementation note:
 
 - `RideLiveScreen` now treats a real `rideId` as the source of truth for ride status, driver location, and rider pickup state.
 - Drivers stream location to the tracking endpoint during active ride phases and clear it when the ride ends.
+- Driver live location is now persisted on the ride record instead of being kept only in in-memory process state, which makes the tracking API safer for real deployments and restarts.
 - The screen now uses backend ride statuses for driver start, arrival, pickup confirmation, ongoing travel, and completion.
 - Simulation remains available only when `demoMode` is explicitly enabled on the screen.
 
