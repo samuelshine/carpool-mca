@@ -112,7 +112,7 @@ class RideDetailsScreen extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: primaryGreen.withOpacity(0.1),
+                          color: primaryGreen.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(

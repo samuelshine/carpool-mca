@@ -31,6 +31,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isEmailVerified = false;
   bool _isIdentityVerified = false;
   bool _isDriverVerified = false;
+  String _rating = 'N/A';
+  String _memberSince = 'N/A';
 
   bool _isLoading = true;
   String? _loadError;
@@ -58,6 +60,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _orgEmail = profile['email']?.toString() ?? 'Not available';
         _community = _displayValue(profile['community']);
         _gender = _formatGender(profile['gender']?.toString());
+        _rating = profile['rating']?.toString() ?? '4.9';
+        _memberSince = profile['member_since']?.toString() ?? '2y';
         _isEmailVerified = profile['is_email_verified'] == true;
         _isIdentityVerified = profile['is_identity_verified'] == true;
         _isDriverVerified = profile['is_driver_verified'] == true;
@@ -91,6 +95,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _orgEmail = profile['email']?.toString() ?? 'Not available';
         _community = _displayValue(profile['community']);
         _gender = _formatGender(profile['gender']?.toString());
+        _rating = profile['rating']?.toString() ?? 'N/A';
+        _memberSince = profile['member_since']?.toString() ?? 'N/A';
         _isEmailVerified = profile['is_email_verified'] == true;
         _isIdentityVerified = profile['is_identity_verified'] == true;
         _isDriverVerified = profile['is_driver_verified'] == true;
@@ -269,15 +275,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                        : const Color(0xFFECFDF5),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: const Color(0xFF10B981).withValues(alpha: 0.2),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Demo Mode shows a seeded profile and verified vehicle list. Actions that would change backend account data are intentionally disabled here.',
-                    style: TextStyle(color: Colors.black54, height: 1.4),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -314,7 +325,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               children: [
                 CircleAvatar(
                   radius: 45,
-                  backgroundColor: Colors.grey.shade200,
+                  backgroundColor: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey.shade800
+                      : Colors.grey.shade200,
                   backgroundImage: _profileImage != null
                       ? FileImage(_profileImage!)
                       : null,
@@ -356,14 +369,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget _buildStatsRow() {
     return Row(
       children: [
-        _buildStatCard('4.9', 'Rating', Icons.star, Colors.green),
+        _buildStatCard(_rating, 'Rating', Icons.star, Colors.green),
         _buildStatCard(
           _vehicles.length.toString(),
           'Vehicles',
           Icons.directions_car,
           Colors.blue,
         ),
-        _buildStatCard('2y', 'Member', Icons.access_time, Colors.orange),
+        _buildStatCard(_memberSince, 'Member', Icons.access_time, Colors.orange),
       ],
     );
   }
@@ -461,9 +474,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.08),
+                color: Colors.orange.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
               ),
               child: Text(
                 _loadError!,
@@ -567,7 +580,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Text(
@@ -656,6 +669,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               confirmColor: Colors.orange,
               onConfirm: () async {
                 Navigator.pop(context);
+                final refreshToken = await ApiService.getRefreshToken() ?? '';
+                if (refreshToken.isNotEmpty) {
+                  await AuthApiService.logout(refreshToken);
+                }
                 await AuthService.logout();
                 if (!mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
@@ -679,6 +696,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 confirmColor: Colors.redAccent,
                 onConfirm: () async {
                   Navigator.pop(context);
+                  final res = await UserApiService.suspendAccount();
+                  if (res.success) {
+                    await AuthService.logout();
+                    if (!mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const AuthScreen()),
+                      (route) => false,
+                    );
+                  } else {
+                    _showMessage(res.error ?? 'Failed to suspend account.', isError: true);
+                  }
                 },
               );
             },
@@ -693,6 +721,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               confirmColor: Colors.red,
               onConfirm: () async {
                 Navigator.pop(context);
+                final res = await UserApiService.deleteAccount();
+                if (res.success) {
+                  await AuthService.logout();
+                  if (!mounted) return;
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const AuthScreen()),
+                    (route) => false,
+                  );
+                } else {
+                  _showMessage(res.error ?? 'Failed to delete account.', isError: true);
+                }
               },
             );
           }),
@@ -805,7 +844,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       borderRadius: BorderRadius.circular(20),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
           blurRadius: 10,
           offset: const Offset(0, 5),
         ),

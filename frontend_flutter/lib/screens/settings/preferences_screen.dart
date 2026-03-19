@@ -23,7 +23,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   List<Map<String, dynamic>> savedLocations = [];
   bool _isLoadingSavedLocations = true;
 
-  // Colors matching settings_screen
+  // Colors — primaryGreen stays constant; others are used as fallbacks.
+  // build() overrides these with theme-aware versions.
   final Color primaryGreen = const Color(0xFF10B981);
   final Color bgGrey = const Color(0xFFF3F4F6);
   final Color textDark = const Color(0xFF1F2937);
@@ -177,8 +178,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -450,7 +451,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? primaryGreen.withOpacity(0.1) : Colors.white,
+          color: isSelected ? primaryGreen.withValues(alpha: 0.1) : Theme.of(context).cardColor,
           border: Border.all(
             color: isSelected ? primaryGreen : Colors.grey[300]!,
             width: 1.5,
@@ -478,10 +479,16 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Theme-aware color overrides — shadow the class fields inside build()
+    final bgGrey = Theme.of(context).scaffoldBackgroundColor;
+    final textDark = Theme.of(context).textTheme.bodyLarge?.color ?? this.textDark;
+    final textGrey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final cardColor = Theme.of(context).cardColor;
+
     return Scaffold(
       backgroundColor: bgGrey,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cardColor,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: textDark),
@@ -556,7 +563,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: primaryGreen.withOpacity(0.1),
+                                color: primaryGreen.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Icon(
@@ -743,7 +750,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   Widget _buildContainer({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: child,
@@ -764,7 +771,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: primaryGreen.withOpacity(0.1),
+              color: primaryGreen.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: primaryGreen, size: 20),
@@ -825,7 +832,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: primaryGreen.withOpacity(0.1),
+                color: primaryGreen.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: primaryGreen, size: 20),

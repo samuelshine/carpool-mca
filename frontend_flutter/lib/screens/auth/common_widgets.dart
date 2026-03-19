@@ -6,9 +6,27 @@ import 'package:flutter/services.dart';
 // ============================================================================
 
 const Color kPrimary = Color(0xFF14B08A);
+
+// Legacy constants kept for non-widget code (e.g. const expressions).
+// Prefer the theme-aware helpers below inside build() methods.
 const Color kMuted = Color(0xFF6B7280);
 const Color kCardBorder = Color(0xFFE6EAF0);
 const Color kBackground = Color(0xFFF6F7FB);
+
+// ── Theme-aware color helpers ───────────────────────────────────────────────
+/// Surface/card background that flips for dark mode.
+Color cardBg(BuildContext context) => Theme.of(context).cardColor;
+
+/// Subtle background (e.g. chips, inputs).
+Color surfaceBg(BuildContext context) =>
+    Theme.of(context).colorScheme.surfaceContainerHighest;
+
+/// Border / divider color.
+Color borderColor(BuildContext context) => Theme.of(context).dividerColor;
+
+/// Muted / secondary text.
+Color mutedText(BuildContext context) =>
+    Theme.of(context).colorScheme.onSurfaceVariant;
 
 // ============================================================================
 // Phone Number Input Field with Country Code
@@ -29,9 +47,9 @@ class PhoneNumberField extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: errorText != null ? Colors.red.shade300 : kCardBorder,
+              color: errorText != null ? Colors.red.shade300 : borderColor(context),
             ),
-            color: Colors.white,
+            color: cardBg(context),
           ),
           child: Row(
             children: [
@@ -42,12 +60,12 @@ class PhoneNumberField extends StatelessWidget {
                   vertical: 16,
                 ),
                 decoration: BoxDecoration(
-                  border: Border(right: BorderSide(color: kCardBorder)),
+                  border: Border(right: BorderSide(color: borderColor(context))),
                 ),
-                child: const Text(
+                child: Text(
                   '🇮🇳 +91',
                   style: TextStyle(
-                    color: Colors.black87,
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
@@ -198,10 +216,10 @@ class DocumentUploadCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: Color(0xFF374151),
+                color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
             ),
             if (isRequired) ...[
@@ -231,9 +249,9 @@ class DocumentUploadCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 28),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: cardBg(context),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kCardBorder, style: BorderStyle.solid),
+              border: Border.all(color: borderColor(context), style: BorderStyle.solid),
             ),
             child: imagePath != null
                 ? _buildImagePreview()
@@ -388,8 +406,8 @@ class AuthOutlinedButton extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(54),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        side: const BorderSide(color: kCardBorder),
-        foregroundColor: const Color(0xFF374151),
+        side: BorderSide(color: borderColor(context)),
+        foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -460,7 +478,7 @@ class AuthTextField extends StatelessWidget {
             prefixIcon: Icon(prefixIcon, color: kMuted),
             suffixIcon: suffix,
             filled: true,
-            fillColor: Colors.white,
+            fillColor: cardBg(context),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 16,

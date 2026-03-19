@@ -90,5 +90,5 @@ class RideStatusUpdate(BaseModel):
 
 class OtpVerifyRequest(BaseModel):
     """Driver submits OTP to confirm rider pickup."""
-    otp: str = Field(..., min_length=4, max_length=4)
+    otp: str = Field(..., min_length=6, max_length=6)
     participant_id: Optional[UUID] = None  # specify which rider to verify

@@ -713,6 +713,11 @@ class _RideLiveScreenState extends State<RideLiveScreen> {
   }
 
   Future<void> _triggerSOS() async {
+    if (_hasRealRide && widget.rideId == null) {
+      _showSnackBar('Cannot trigger SOS. Ride details are invalid.', isError: true);
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

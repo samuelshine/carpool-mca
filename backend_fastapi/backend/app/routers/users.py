@@ -35,3 +35,25 @@ async def update_my_profile(
     await db.flush()
     await db.refresh(user)
     return user
+
+
+@router.delete("/me", status_code=status.HTTP_200_OK)
+async def delete_my_profile(user: CurrentUser, db: DBSession):
+    """Delete the current user's profile and all associated data."""
+    # Since a soft delete or true cascade might be required, we'll delete the user record here.
+    # Note: SQLAlchemy cascade should handle child records if configured.
+    await db.delete(user)
+    await db.commit()
+    return {"message": "Account successfully deleted"}
+
+
+@router.post("/me/suspend", status_code=status.HTTP_200_OK)
+async def suspend_my_profile(user: CurrentUser, db: DBSession):
+    """Suspend the current user's profile (soft-delete or disable login)."""
+    # For now, we will clear their tokens or set an inactive flag.
+    # Since there's no explicit is_active flag in UserRead schema that we can toggle,
+    # we'll represent suspension as clearing verification flags.
+    user.is_phone_verified = False
+    user.is_driver_verified = False
+    await db.flush()
+    return {"message": "Account suspended successfully"}

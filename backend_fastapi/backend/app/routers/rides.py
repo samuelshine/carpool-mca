@@ -42,7 +42,7 @@ router = APIRouter(prefix="/rides", tags=["Rides"])
 
 
 def _generate_otp() -> str:
-    return "".join(random.choices(string.digits, k=4))
+    return "".join(random.choices(string.digits, k=6))
 
 
 def _history_state_from_ride_status(status: RideStatusEnum) -> str:
@@ -116,10 +116,10 @@ async def create_ride(payload: RideCreate, user: VerifiedDriver, db: DBSession):
 # ─── List rides ─────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=list[RideRead])
-async def list_rides(db: DBSession):
+async def list_rides(skip: int = 0, limit: int = 50, db: DBSession = None):
     """List rides with status 'open'."""
     result = await db.execute(
-        select(Ride).where(Ride.status == RideStatusEnum.open)
+        select(Ride).where(Ride.status == RideStatusEnum.open).offset(skip).limit(limit)
     )
     return result.scalars().all()
 
@@ -298,8 +298,8 @@ async def get_ride(
 
     return RideDetailRead(
         ride_id=ride.ride_id,
-        start_location={"latitude": 0, "longitude": 0},  # placeholder
-        end_location={"latitude": 0, "longitude": 0},
+        start_location=ride.start_location,
+        end_location=ride.end_location,
         start_address=ride.start_address,
         end_address=ride.end_address,
         ride_date=ride.ride_date,
@@ -335,6 +335,20 @@ async def update_ride_status(
     # Generate ride-level OTP when driver starts heading out
     if payload.status == RideStatusEnum.driver_arriving and not ride.pickup_otp:
         ride.pickup_otp = _generate_otp()
+
+    # Validate allowed status transitions
+    allowed_transitions = {
+        RideStatusEnum.open: {RideStatusEnum.in_progress, RideStatusEnum.cancelled},
+        RideStatusEnum.in_progress: {RideStatusEnum.completed, RideStatusEnum.cancelled},
+        RideStatusEnum.completed: set(),
+        RideStatusEnum.cancelled: set(),
+    }
+    
+    if payload.status not in allowed_transitions[ride.status]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid transition from {ride.status.value} to {payload.status.value}"
+        )
 
     ride.status = payload.status
     await db.flush()

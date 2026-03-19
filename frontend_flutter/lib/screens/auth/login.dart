@@ -260,7 +260,7 @@ class _LoginSignupScreenState extends State<_LoginSignupScreen> {
     final isSignUp = _tabIndex == 1;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 24),
@@ -426,7 +426,7 @@ class _LoginSignupScreenState extends State<_LoginSignupScreen> {
 
               const SizedBox(height: 16),
               Text(
-                '© 2023 University Carpool Inc.',
+                '© ${DateTime.now().year} University Carpool Inc.',
                 style: TextStyle(color: kMuted.withValues(alpha: 0.7)),
               ),
             ],
@@ -596,7 +596,7 @@ class _SafetyInfoCard extends StatelessWidget {
       height: compact ? 84 : 100,
       padding: EdgeInsets.all(compact ? 12 : 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: kCardBorder),
         boxShadow: [
@@ -652,7 +652,7 @@ class _AuthTabs extends StatelessWidget {
     return Container(
       height: 54,
       decoration: BoxDecoration(
-        color: kBackground,
+        color: surfaceBg(context),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: kCardBorder),
       ),
@@ -757,7 +757,7 @@ class _ContentCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: kCardBorder),
         boxShadow: [

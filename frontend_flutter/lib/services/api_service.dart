@@ -334,6 +334,15 @@ class AuthApiService {
       body: {'session_token': sessionToken, 'otp': otp},
     );
   }
+
+  /// POST /auth/logout
+  /// Revokes the refresh token on backend.
+  static Future<ApiResponse> logout(String refreshToken) async {
+    return ApiService.post(
+      '/auth/logout',
+      body: {'refresh_token': refreshToken},
+    );
+  }
 }
 
 // =============================================================================
@@ -516,6 +525,16 @@ class UserApiService {
     if (profilePhotoUrl != null) body['profile_photo_url'] = profilePhotoUrl;
     if (gender != null) body['gender'] = gender;
     return ApiService.put('/users/me', auth: true, body: body);
+  }
+
+  /// DELETE /users/me — Delete user account.
+  static Future<ApiResponse> deleteAccount() async {
+    return ApiService.delete('/users/me', auth: true);
+  }
+
+  /// POST /users/me/suspend — Suspend user account.
+  static Future<ApiResponse> suspendAccount() async {
+    return ApiService.post('/users/me/suspend', auth: true);
   }
 }
 

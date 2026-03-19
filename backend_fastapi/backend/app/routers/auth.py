@@ -14,7 +14,7 @@ Persistent Session:
 - POST /auth/refresh  → Exchange refresh_token for new access_token + rotated refresh_token
 - POST /auth/logout   → Revoke refresh_token
 """
-import hashlib
+
 import uuid
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, status, Request

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'common_widgets.dart';
 import '../../main.dart';
 import '../../services/api_service.dart';
+import '../../services/location_service.dart';
 
 class PersonalDetailsScreen extends StatefulWidget {
   final String phoneVerifiedToken;
@@ -68,14 +69,22 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
       firstDate: DateTime(1950),
       lastDate: DateTime(now.year - 16), // Must be at least 16 years old
       builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: kPrimary,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-            ),
+            colorScheme: isDark
+                ? ColorScheme.dark(
+                    primary: kPrimary,
+                    onPrimary: Colors.white,
+                    surface: const Color(0xFF1E1E1E),
+                    onSurface: Colors.white,
+                  )
+                : const ColorScheme.light(
+                    primary: kPrimary,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                    onSurface: Colors.black,
+                  ),
           ),
           child: child!,
         );
@@ -108,21 +117,47 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
   Future<void> _getCurrentLocation() async {
     setState(() => _isGettingLocation = true);
 
-    // Simulate getting location
-    // TODO: Integrate with geolocator package for real location
-    await Future.delayed(const Duration(milliseconds: 1500));
+    try {
+      final position = await LocationService.getCurrentLocation();
+      final address = await LocationService.reverseGeocode(position);
 
-    // Simulate a location result
-    setState(() {
-      _addressCtrl.text = 'Christ University, Hosur Road, Bangalore';
-      _isGettingLocation = false;
-    });
+      if (!mounted) return;
 
-    if (mounted) {
+      setState(() {
+        _addressCtrl.text = address;
+        _isGettingLocation = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Location detected successfully'),
           backgroundColor: kPrimary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } on LocationException catch (e) {
+      if (!mounted) return;
+      setState(() => _isGettingLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isGettingLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not get location. Try again or enter manually.'),
+          backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -184,7 +219,6 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -277,9 +311,9 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(horizontal: 14),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: cardBg(context),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kCardBorder),
+                              border: Border.all(color: borderColor(context)),
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
@@ -343,7 +377,7 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                                 color: kMuted,
                               ),
                               filled: true,
-                              fillColor: Colors.white,
+                              fillColor: cardBg(context),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 16,
@@ -403,9 +437,9 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                                 vertical: 16,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: cardBg(context),
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: kCardBorder),
+                                border: Border.all(color: borderColor(context)),
                               ),
                               child: Row(
                                 children: [
@@ -417,7 +451,7 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                                         : 'Tap to select date',
                                     style: TextStyle(
                                       color: _dateOfBirth != null
-                                          ? Colors.black87
+                                          ? Theme.of(context).textTheme.bodyLarge?.color
                                           : kMuted.withValues(alpha: 0.6),
                                       fontSize: 16,
                                     ),
@@ -507,7 +541,7 @@ class _PersonalDetailsScreenState extends State<PersonalDetailsScreen> {
                                       tooltip: 'Use current location',
                                     ),
                               filled: true,
-                              fillColor: Colors.white,
+                              fillColor: cardBg(context),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 16,

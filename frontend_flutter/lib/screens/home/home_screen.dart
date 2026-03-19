@@ -144,9 +144,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: kBackground,
+                color: surfaceBg(context),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: kCardBorder),
+                border: Border.all(color: borderColor(context)),
               ),
               child: Row(
                 children: [
@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? kPrimary.withValues(alpha: 0.1)
-                    : kBackground,
+                    : surfaceBg(context),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: isSelected ? kPrimary : kCardBorder),
               ),
@@ -245,7 +245,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? kPrimary.withValues(alpha: 0.1)
+            : const Color(0xFFECFDF5),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: kPrimary.withValues(alpha: 0.2)),
       ),
@@ -361,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
@@ -384,12 +386,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
+                    Text(
                       'Locating...',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: Colors.black87,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                       ),
                     ),
                   ] else ...[
@@ -397,10 +399,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 6),
                     Text(
                       _currentLocation != null ? 'Your Location' : 'Bangalore',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: Colors.black87,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                       ),
                     ),
                   ],

@@ -90,11 +90,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Define colors used in the design
+    // Define colors used in the design — now theme-aware
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color primaryGreen = const Color(0xFF10B981);
-    final Color bgGrey = const Color(0xFFF3F4F6);
-    final Color textDark = const Color(0xFF1F2937);
-    final Color textGrey = const Color(0xFF6B7280);
+    final Color bgGrey = Theme.of(context).scaffoldBackgroundColor;
+    final Color textDark = Theme.of(context).textTheme.bodyLarge?.color ?? (isDark ? Colors.white : const Color(0xFF1F2937));
+    final Color textGrey = Theme.of(context).colorScheme.onSurfaceVariant;
+    final Color cardColor = Theme.of(context).cardColor;
 
     return Scaffold(
       backgroundColor: bgGrey,
@@ -124,11 +126,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -139,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // Avatar
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: const Color(0xFF6366F1).withOpacity(0.15),
+                    backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.15),
                     child: _isLoadingProfile
                         ? const SizedBox(
                             width: 20,
@@ -277,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           boxShadow: isRiderMode
                               ? [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     blurRadius: 4,
                                   ),
                                 ]
@@ -309,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           boxShadow: !isRiderMode
                               ? [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     blurRadius: 4,
                                   ),
                                 ]
@@ -337,16 +339,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
+                  color: isDark
+                      ? primaryGreen.withValues(alpha: 0.1)
+                      : const Color(0xFFECFDF5),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                  border: Border.all(color: primaryGreen.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: primaryGreen.withOpacity(0.12),
+                        color: primaryGreen.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(Icons.smart_display, color: primaryGreen),
@@ -398,7 +402,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionHeader('ACTIVITY'),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -425,7 +429,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: primaryGreen.withOpacity(0.1),
+                              color: primaryGreen.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(Icons.history, color: primaryGreen),
@@ -576,7 +580,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -584,7 +588,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildListTile(
                     icon: Icons.warning_amber_rounded,
                     iconColor: Colors.orange,
-                    iconBg: Colors.orange.withOpacity(0.1),
+                    iconBg: Colors.orange.withValues(alpha: 0.1),
                     title: 'Report User or Driver',
                     subtitle: 'Flag inappropriate behavior',
                     onTap: () {
@@ -600,7 +604,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildListTile(
                     icon: Icons.sos,
                     iconColor: Colors.red,
-                    iconBg: Colors.red.withOpacity(0.1),
+                    iconBg: Colors.red.withValues(alpha: 0.1),
                     title: 'Safety Center',
                     subtitle: 'Emergency contacts & SOS',
                     onTap: () {
@@ -622,7 +626,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionHeader('SUPPORT'),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -736,7 +740,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Text(
         title,
         style: TextStyle(
-          color: const Color(0xFF6B7280),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontWeight: FontWeight.bold,
           fontSize: 12,
           letterSpacing: 1.0,
@@ -754,7 +758,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -763,7 +767,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: color, size: 24),
@@ -822,7 +826,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/api_service.dart';
 import 'common_widgets.dart';
 
 class DriverDetailsScreen extends StatefulWidget {
@@ -39,12 +41,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
   }
 
   Future<void> _pickDriverLicense() async {
-    // TODO: Implement actual image picker
-    // For now, simulate a selection
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // Show image source dialog
-    final source = await showModalBottomSheet<String>(
+    final sourceString = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -52,32 +49,39 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
       builder: (context) => _ImageSourceSheet(),
     );
 
-    if (source != null) {
-      // Simulate image selection
-      setState(() {
-        _driverLicensePath = 'assets/images/license_placeholder.jpg';
-      });
+    if (sourceString != null) {
+      final source = sourceString == 'camera'
+          ? ImageSource.camera
+          : ImageSource.gallery;
+      
+      try {
+        final XFile? image = await ImagePicker().pickImage(source: source);
+        if (image != null) {
+          setState(() {
+            _driverLicensePath = image.path;
+          });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Driver\'s license uploaded successfully'),
-            backgroundColor: kPrimary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Driver\'s license uploaded successfully'),
+                backgroundColor: kPrimary,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Error picking image: $e');
       }
     }
   }
 
   Future<void> _pickVehicleDoc() async {
-    // TODO: Implement actual image picker
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    final source = await showModalBottomSheet<String>(
+    final sourceString = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -85,22 +89,33 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
       builder: (context) => _ImageSourceSheet(),
     );
 
-    if (source != null) {
-      setState(() {
-        _vehicleDocPath = 'assets/images/vehicle_placeholder.jpg';
-      });
+    if (sourceString != null) {
+      final source = sourceString == 'camera'
+          ? ImageSource.camera
+          : ImageSource.gallery;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Vehicle document uploaded successfully'),
-            backgroundColor: kPrimary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+      try {
+        final XFile? image = await ImagePicker().pickImage(source: source);
+        if (image != null) {
+          setState(() {
+            _vehicleDocPath = image.path;
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Vehicle document uploaded successfully'),
+                backgroundColor: kPrimary,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Error picking image: $e');
       }
     }
   }
@@ -110,10 +125,24 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
 
     setState(() => _isLoading = true);
 
-    // Simulate API call to save driver details
-    await Future.delayed(const Duration(milliseconds: 1000));
+    try {
+      // Create vehicle
+      final vehicleRes = await VehicleApiService.addVehicle(
+        vehicleType: _vehicleModelCtrl.text.trim(),
+        vehicleNumber: _licensePlateCtrl.text.trim().toUpperCase()
+      );
 
-    // TODO: Replace with actual API call to save driver details
+      if (vehicleRes.success && vehicleRes.data != null) {
+        // Create driver profile using new vehicle
+        final vehicleId = vehicleRes.data['vehicle_id'];
+        await DriverProfileApiService.createDriverProfile(
+          vehicleId: vehicleId,
+          dailySeatLimit: 4, 
+        );
+      }
+    } catch (_) {
+      // Handle silently or show snackbar
+    }
 
     setState(() => _isLoading = false);
     widget.onComplete?.call();
@@ -122,7 +151,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -138,7 +166,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
                   ),
                   const Spacer(),
                   const Text(
-                    'Step 2 of 3',
+                    'Step 3 of 3',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: kMuted,
